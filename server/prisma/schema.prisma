@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  admins    User[]
+  campaigns Campaign[]
+  createdAt DateTime @default(now())
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      String   @default("ADMIN") // SUPER_ADMIN, ADMIN
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+}
+
+model Campaign {
+  id             String     @id @default(uuid())
+  title          String
+  description    String?
+  validationCode String
+  isActive       Boolean    @default(true)
+  companyId      String
+  company        Company    @relation(fields: [companyId], references: [id])
+  drivers        Driver[]
+  locations      Location[]
+  createdAt      DateTime   @default(now())
+}
+
+model Driver {
+  id         String     @id @default(uuid())
+  alias      String
+  campaignId String
+  campaign   Campaign   @relation(fields: [campaignId], references: [id])
+  locations  Location[]
+  deviceInfo String?
+  joinedAt   DateTime   @default(now())
+}
+
+model Location {
+  id           Int      @id @default(autoincrement())
+  driverId     String
+  driver       Driver   @relation(fields: [driverId], references: [id])
+  campaignId   String
+  campaign     Campaign @relation(fields: [campaignId], references: [id])
+  latitude     Float
+  longitude    Float
+  accuracy     Float?
+  batteryLevel Float?
+  timestamp    DateTime
+  isOfflineSync Boolean @default(false)
+
+  @@index([campaignId])
+  @@index([driverId])
+}

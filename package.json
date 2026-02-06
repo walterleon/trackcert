@@ -1,0 +1,8 @@
+{
+    "name": "trackcert",
+    "APP_URL": "http://localhost:3000",
+    "scripts": {
+        "start": "echo 'Use specific folder scripts'",
+        "deploy": "echo 'Deploy via Docker'"
+    }
+}
