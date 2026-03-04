@@ -3,46 +3,66 @@ import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 
 dotenv.config();
 
+// Ensure uploads directory exists
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const app = express();
 const server = http.createServer(app);
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:4173'];
+
 const io = new Server(server, {
-    cors: {
-        origin: "*", // Configure this in production
-        methods: ["GET", "POST"]
-    }
+  cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
 });
 
-app.use(cors());
+// Make io accessible from controllers via req.app.get('io')
+app.set('io', io);
+
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
-app.get('/', (req, res) => {
-    res.send('TrackCert API is ready');
+// Serve uploaded photos statically
+app.use('/uploads', express.static(uploadsDir));
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', app: 'RastreoYa API', timestamp: new Date().toISOString() });
 });
 
 import apiRoutes from './routes/api';
 app.use('/api', apiRoutes);
 
-
+// ─── Socket.io rooms ──────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
+  console.log(`[ws] connected: ${socket.id}`);
 
-    socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
-    });
+  // Company admin or public viewer joins a campaign room to receive live updates
+  socket.on('join-campaign', (campaignId: string) => {
+    if (typeof campaignId === 'string' && campaignId.length > 0) {
+      socket.join(`campaign:${campaignId}`);
+      console.log(`[ws] ${socket.id} joined campaign:${campaignId}`);
+    }
+  });
 
-    // Handle GPS updates
-    socket.on('location-update', (data) => {
-        console.log('Location update:', data);
-        // Broadcast to admins
-        io.emit('driver-moved', data);
-    });
+  socket.on('leave-campaign', (campaignId: string) => {
+    socket.leave(`campaign:${campaignId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`[ws] disconnected: ${socket.id}`);
+  });
 });
 
-const PORT = process.env.PORT || 3000;
-
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`RastreoYa API running on port ${PORT}`);
 });

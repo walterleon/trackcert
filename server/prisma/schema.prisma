@@ -8,33 +8,52 @@ datasource db {
 }
 
 model Company {
-  id        String   @id @default(uuid())
-  name      String
-  admins    User[]
-  campaigns Campaign[]
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String?
+  googleId     String?  @unique
+  role         String   @default("COMPANY") // COMPANY, SUPER_ADMIN
+  credits      Int      @default(0)
+  planName     String   @default("free") // free, starter, growth, pro
+  campaigns    Campaign[]
+  photos       Photo[]
+  subscriptions      Subscription[]
+  creditTransactions CreditTransaction[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  role      String   @default("ADMIN") // SUPER_ADMIN, ADMIN
-  companyId String?
-  company   Company? @relation(fields: [companyId], references: [id])
+model Subscription {
+  id            String    @id @default(uuid())
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id])
+  planName      String
+  status        String    @default("active") // active, cancelled, expired
+  startDate     DateTime  @default(now())
+  endDate       DateTime?
+  mercadopagoId String?
+  createdAt     DateTime  @default(now())
 }
 
 model Campaign {
   id             String     @id @default(uuid())
-  title          String
-  description    String?
-  validationCode String
-  isActive       Boolean    @default(true)
   companyId      String
   company        Company    @relation(fields: [companyId], references: [id])
+  title          String
+  description    String?
+  campaignCode   String     @unique // short code e.g. "CAMP-ABCD12"
+  validationCode String
+  isActive       Boolean    @default(true)
+  shareToken     String?    @unique
+  sharePin       String?
+  startDate      DateTime?
+  endDate        DateTime?
   drivers        Driver[]
   locations      Location[]
+  photos         Photo[]
   createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 }
 
 model Driver {
@@ -43,23 +62,56 @@ model Driver {
   campaignId String
   campaign   Campaign   @relation(fields: [campaignId], references: [id])
   locations  Location[]
+  photos     Photo[]
   deviceInfo String?
+  isActive   Boolean    @default(true)
+  lastSeenAt DateTime?
   joinedAt   DateTime   @default(now())
 }
 
 model Location {
-  id           Int      @id @default(autoincrement())
-  driverId     String
-  driver       Driver   @relation(fields: [driverId], references: [id])
-  campaignId   String
-  campaign     Campaign @relation(fields: [campaignId], references: [id])
-  latitude     Float
-  longitude    Float
-  accuracy     Float?
-  batteryLevel Float?
-  timestamp    DateTime
-  isOfflineSync Boolean @default(false)
+  id            Int      @id @default(autoincrement())
+  driverId      String
+  driver        Driver   @relation(fields: [driverId], references: [id])
+  campaignId    String
+  campaign      Campaign @relation(fields: [campaignId], references: [id])
+  latitude      Float
+  longitude     Float
+  accuracy      Float?
+  batteryLevel  Float?
+  timestamp     DateTime
+  isOfflineSync Boolean  @default(false)
 
   @@index([campaignId])
   @@index([driverId])
+  @@index([timestamp])
+}
+
+model Photo {
+  id         String   @id @default(uuid())
+  driverId   String
+  driver     Driver   @relation(fields: [driverId], references: [id])
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  latitude   Float
+  longitude  Float
+  accuracy   Float?
+  filePath   String
+  fileUrl    String
+  takenAt    DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([driverId])
+}
+
+model CreditTransaction {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  amount    Int
+  reason    String
+  createdAt DateTime @default(now())
 }
