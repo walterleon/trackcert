@@ -12,9 +12,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'TrackCert Driver',
-        short_name: 'TrackCert',
-        description: 'Tracking Application for Distribution Transparency',
+        name: 'RastreoYa Driver',
+        short_name: 'RastreoYa',
+        description: 'Aplicación de seguimiento GPS para distribuidoras',
         theme_color: '#1f2937',
         background_color: '#1f2937',
         display: 'standalone',
