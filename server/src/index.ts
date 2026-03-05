@@ -46,7 +46,7 @@ const clientDistDir = path.join(__dirname, '../../client/dist');
 if (fs.existsSync(clientDistDir)) {
   app.use(express.static(clientDistDir));
   // SPA fallback: serve index.html for all non-API routes
-  app.get('*', (_req, res) => {
+  app.use((_req, res) => {
     res.sendFile(path.join(clientDistDir, 'index.html'));
   });
 }
