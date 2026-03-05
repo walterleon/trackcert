@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -41,7 +41,7 @@ model Campaign {
   companyId      String
   company        Company    @relation(fields: [companyId], references: [id])
   title          String
-  description    String?
+  description    String?    @db.Text
   campaignCode   String     @unique // short code e.g. "CAMP-ABCD12"
   validationCode String
   isActive       Boolean    @default(true)
@@ -63,7 +63,7 @@ model Driver {
   campaign   Campaign   @relation(fields: [campaignId], references: [id])
   locations  Location[]
   photos     Photo[]
-  deviceInfo String?
+  deviceInfo String?  @db.Text
   isActive   Boolean    @default(true)
   lastSeenAt DateTime?
   joinedAt   DateTime   @default(now())
@@ -112,6 +112,6 @@ model CreditTransaction {
   companyId String
   company   Company  @relation(fields: [companyId], references: [id])
   amount    Int
-  reason    String
+  reason    String  @db.Text
   createdAt DateTime @default(now())
 }
