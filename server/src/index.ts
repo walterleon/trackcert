@@ -41,6 +41,16 @@ app.get('/health', (_req, res) => {
 import apiRoutes from './routes/api';
 app.use('/api', apiRoutes);
 
+// Serve React frontend static files (production)
+const clientDistDir = path.join(__dirname, '../../client/dist');
+if (fs.existsSync(clientDistDir)) {
+  app.use(express.static(clientDistDir));
+  // SPA fallback: serve index.html for all non-API routes
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(clientDistDir, 'index.html'));
+  });
+}
+
 // ─── Socket.io rooms ──────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   console.log(`[ws] connected: ${socket.id}`);
