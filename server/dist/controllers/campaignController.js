@@ -170,7 +170,7 @@ const generateShareLink = (req, res) => __awaiter(void 0, void 0, void 0, functi
 exports.generateShareLink = generateShareLink;
 // ─── Driver: auth with campaignCode + validationCode ─────────────────────────
 const validateCampaign = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { campaignCode, validationCode, alias } = req.body;
+    const { campaignCode, validationCode, alias, deviceId } = req.body;
     if (!campaignCode || !validationCode || !alias) {
         res.status(400).json({ error: 'campaignCode, validationCode and alias are required' });
         return;
@@ -189,9 +189,21 @@ const validateCampaign = (req, res) => __awaiter(void 0, void 0, void 0, functio
             res.status(403).json({ error: 'Campaign is not active' });
             return;
         }
-        const driver = yield db_1.default.driver.create({
-            data: { alias, campaignId: campaign.id },
-        });
+        let driver;
+        if (deviceId) {
+            // Upsert: reuse existing driver for same device+campaign, or create new
+            driver = yield db_1.default.driver.upsert({
+                where: { deviceId_campaignId: { deviceId, campaignId: campaign.id } },
+                update: { alias, isActive: true, lastSeenAt: new Date() },
+                create: { alias, campaignId: campaign.id, deviceId },
+            });
+        }
+        else {
+            // Legacy clients without deviceId: create new driver
+            driver = yield db_1.default.driver.create({
+                data: { alias, campaignId: campaign.id },
+            });
+        }
         res.json({
             success: true,
             driverId: driver.id,
