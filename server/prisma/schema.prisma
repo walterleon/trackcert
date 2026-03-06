@@ -64,10 +64,13 @@ model Driver {
   campaign   Campaign   @relation(fields: [campaignId], references: [id])
   locations  Location[]
   photos     Photo[]
+  deviceId   String?
   deviceInfo String?  @db.Text
   isActive   Boolean    @default(true)
   lastSeenAt DateTime?
   joinedAt   DateTime   @default(now())
+
+  @@unique([deviceId, campaignId])
 }
 
 model Location {

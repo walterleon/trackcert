@@ -181,7 +181,7 @@ export const generateShareLink = async (req: AuthRequest, res: Response): Promis
 // ─── Driver: auth with campaignCode + validationCode ─────────────────────────
 
 export const validateCampaign = async (req: Request, res: Response): Promise<void> => {
-  const { campaignCode, validationCode, alias } = req.body;
+  const { campaignCode, validationCode, alias, deviceId } = req.body;
 
   if (!campaignCode || !validationCode || !alias) {
     res.status(400).json({ error: 'campaignCode, validationCode and alias are required' });
@@ -203,9 +203,21 @@ export const validateCampaign = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const driver = await prisma.driver.create({
-      data: { alias, campaignId: campaign.id },
-    });
+    let driver;
+
+    if (deviceId) {
+      // Upsert: reuse existing driver for same device+campaign, or create new
+      driver = await prisma.driver.upsert({
+        where: { deviceId_campaignId: { deviceId, campaignId: campaign.id } },
+        update: { alias, isActive: true, lastSeenAt: new Date() },
+        create: { alias, campaignId: campaign.id, deviceId },
+      });
+    } else {
+      // Legacy clients without deviceId: create new driver
+      driver = await prisma.driver.create({
+        data: { alias, campaignId: campaign.id },
+      });
+    }
 
     res.json({
       success: true,

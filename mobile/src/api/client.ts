@@ -1,9 +1,25 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Change this to your server URL
-const BASE_URL = 'http://10.0.2.2:3001/api'; // Android emulator → localhost
+const BASE_URL = 'https://rastreoya.com/api';
 
 const api = axios.create({ baseURL: BASE_URL, timeout: 10000 });
+
+const DEVICE_ID_KEY = 'rastreoya-device-id';
+
+function generateId(): string {
+  const s = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
+  return `${s()}${s()}-${s()}-${s()}-${s()}-${s()}${s()}${s()}`;
+}
+
+async function getDeviceId(): Promise<string> {
+  let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+  if (!deviceId) {
+    deviceId = generateId();
+    await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+  }
+  return deviceId;
+}
 
 export interface LocationPoint {
   latitude: number;
@@ -15,7 +31,8 @@ export interface LocationPoint {
 }
 
 export async function driverAuth(campaignCode: string, validationCode: string, alias: string) {
-  const { data } = await api.post('/driver/auth', { campaignCode, validationCode, alias });
+  const deviceId = await getDeviceId();
+  const { data } = await api.post('/driver/auth', { campaignCode, validationCode, alias, deviceId });
   return data as { success: boolean; driverId: string; campaignId: string; campaignTitle: string };
 }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,62 +6,45 @@ import {
   StyleSheet,
   Alert,
   Platform,
+  PermissionsAndroid,
 } from 'react-native';
-import BackgroundGeolocation, {
-  Location,
-} from 'react-native-background-geolocation';
+import Geolocation from 'react-native-geolocation-service';
 import { launchCamera, CameraOptions } from 'react-native-image-picker';
 import { sendLocations, uploadPhoto } from '../api/client';
 import { useTrackingStore } from '../store/useTrackingStore';
+
+// On Samsung + Android 12+/16, PermissionsAndroid.check() can return false even after
+// the user grants the permission. We just show the dialog and let the native location
+// API decide if the permission is truly available.
+async function ensureLocationPermissionRequested(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+  } catch {}
+}
 
 export function TrackingScreen() {
   const { session, isTracking, currentLocation, offlineQueue, setTracking, setCurrentLocation, addToQueue, clearQueue, logout } =
     useTrackingStore();
   const [uploading, setUploading] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
 
-  // Configure background geolocation on mount
-  useEffect(() => {
-    BackgroundGeolocation.ready({
-      desiredAccuracy: BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
-      distanceFilter: 20, // meters
-      stopOnTerminate: false,
-      startOnBoot: true,
-      debug: __DEV__,
-      logLevel: BackgroundGeolocation.LOG_LEVEL_WARNING,
-      notification: {
-        title: 'RastreoYa activo',
-        text: 'Tu ubicación se está compartiendo',
-      },
-    }).then(() => {
-      if (isTracking) {
-        BackgroundGeolocation.start();
-      }
-    });
-
-    const subscriber = BackgroundGeolocation.onLocation(handleLocation, handleLocationError);
-
-    return () => {
-      subscriber.remove();
-    };
-  }, []);
-
-  // Sync offline queue whenever we have connection
+  // Sync offline queue on mount
   useEffect(() => {
     if (offlineQueue.length > 0 && session) {
       sendLocations(session.driverId, offlineQueue)
         .then(() => clearQueue())
-        .catch(() => {/* stay queued */});
+        .catch(() => {});
     }
   }, []);
 
-  const handleLocation = async (location: Location) => {
+  const handleLocation = async (coords: { latitude: number; longitude: number; accuracy: number | null }) => {
     if (!session) return;
     const point = {
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-      accuracy: location.coords.accuracy,
-      batteryLevel: location.battery.level,
-      timestamp: new Date(location.timestamp).toISOString(),
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      accuracy: coords.accuracy ?? undefined,
+      timestamp: new Date().toISOString(),
     };
     setCurrentLocation(point);
     try {
@@ -71,18 +54,57 @@ export function TrackingScreen() {
     }
   };
 
-  const handleLocationError = (error: any) => {
-    console.warn('Location error:', error);
-  };
-
   const toggleTracking = async () => {
     if (isTracking) {
-      await BackgroundGeolocation.stop();
+      if (watchIdRef.current !== null) {
+        Geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
       setTracking(false);
-    } else {
-      await BackgroundGeolocation.start();
-      setTracking(true);
+      return;
     }
+
+    // Show permission dialog (result is unreliable on Samsung/Android 16, so we ignore it)
+    await ensureLocationPermissionRequested();
+
+    // Use forceLocationManager to bypass Google Play Services FusedLocationProviderClient,
+    // which silently drops location requests on Samsung dual-app profiles.
+    // The native LocationManagerProvider now uses Activity context (patched).
+    Geolocation.getCurrentPosition(
+      (pos) => handleLocation(pos.coords),
+      (err) => console.warn('getCurrentPosition error:', err.code, err.message),
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 300000, forceLocationManager: true, forceRequestLocation: true },
+    );
+
+    watchIdRef.current = Geolocation.watchPosition(
+      (pos) => handleLocation(pos.coords),
+      (err) => {
+        if (err.code === 1) {
+          Alert.alert(
+            'Permiso requerido',
+            'Necesitás permitir el acceso a la ubicación.\nAndá a Configuración > Aplicaciones > RastreoYa > Permisos > Ubicación.',
+          );
+        } else if (err.code === 2) {
+          Alert.alert('GPS desactivado', 'Activá la ubicación en Configuración > Ubicación.');
+        } else {
+          Alert.alert('Error GPS', `code=${err.code}\n${err.message}`);
+        }
+        if (watchIdRef.current !== null) {
+          Geolocation.clearWatch(watchIdRef.current);
+          watchIdRef.current = null;
+        }
+        setTracking(false);
+      },
+      {
+        enableHighAccuracy: true,
+        forceLocationManager: true,
+        forceRequestLocation: true,
+        distanceFilter: 0,
+        interval: 10000,
+        fastestInterval: 5000,
+      },
+    );
+    setTracking(true);
   };
 
   const handleTakePhoto = async () => {
@@ -121,8 +143,11 @@ export function TrackingScreen() {
       {
         text: 'Salir',
         style: 'destructive',
-        onPress: async () => {
-          await BackgroundGeolocation.stop();
+        onPress: () => {
+          if (watchIdRef.current !== null) {
+            Geolocation.clearWatch(watchIdRef.current);
+            watchIdRef.current = null;
+          }
           logout();
         },
       },
