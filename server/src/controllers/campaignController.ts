@@ -224,6 +224,7 @@ export const validateCampaign = async (req: Request, res: Response): Promise<voi
       driverId: driver.id,
       campaignId: campaign.id,
       campaignTitle: campaign.title,
+      _debug: { receivedDeviceId: deviceId || null, serverVersion: 'v2-deviceid' },
     });
   } catch (error) {
     console.error('validateCampaign error:', error);

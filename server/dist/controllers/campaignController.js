@@ -209,6 +209,7 @@ const validateCampaign = (req, res) => __awaiter(void 0, void 0, void 0, functio
             driverId: driver.id,
             campaignId: campaign.id,
             campaignTitle: campaign.title,
+            _debug: { receivedDeviceId: deviceId || null, serverVersion: 'v2-deviceid' },
         });
     }
     catch (error) {
