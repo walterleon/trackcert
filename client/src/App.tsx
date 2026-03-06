@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { CampaignDetailPage } from './pages/CampaignDetailPage';
 import { CampaignFormPage } from './pages/CampaignFormPage';
 import { TrackingPage } from './pages/TrackingPage';
+import { JoinPage } from './pages/JoinPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/track/:token" element={<TrackingPage />} />
+        <Route path="/join" element={<JoinPage />} />
 
         {/* Protected routes (company dashboard) */}
         <Route element={<ProtectedRoute />}>

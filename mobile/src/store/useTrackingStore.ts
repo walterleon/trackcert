@@ -14,12 +14,14 @@ interface TrackingState {
   isTracking: boolean;
   currentLocation: LocationPoint | null;
   offlineQueue: LocationPoint[];
+  pendingJoin: { campaignCode: string; validationCode: string } | null;
   setSession: (session: Session | null) => void;
   setTracking: (active: boolean) => void;
   setCurrentLocation: (loc: LocationPoint) => void;
   addToQueue: (loc: LocationPoint) => void;
   clearQueue: () => void;
   logout: () => void;
+  setPendingJoin: (params: { campaignCode: string; validationCode: string } | null) => void;
 }
 
 export const useTrackingStore = create<TrackingState>()(
@@ -29,6 +31,7 @@ export const useTrackingStore = create<TrackingState>()(
       isTracking: false,
       currentLocation: null,
       offlineQueue: [],
+      pendingJoin: null,
       setSession: (session) => set({ session }),
       setTracking: (isTracking) => set({ isTracking }),
       setCurrentLocation: (loc) => set({ currentLocation: loc }),
@@ -36,10 +39,12 @@ export const useTrackingStore = create<TrackingState>()(
         set((state) => ({ offlineQueue: [...state.offlineQueue, loc] })),
       clearQueue: () => set({ offlineQueue: [] }),
       logout: () => set({ session: null, isTracking: false, currentLocation: null, offlineQueue: [] }),
+      setPendingJoin: (pendingJoin) => set({ pendingJoin }),
     }),
     {
       name: 'rastreoya-tracking',
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({ session: state.session, offlineQueue: state.offlineQueue }),
     }
   )
 );

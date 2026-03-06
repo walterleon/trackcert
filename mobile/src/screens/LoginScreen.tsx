@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,16 @@ export function LoginScreen() {
   const [alias, setAlias] = useState('');
   const [loading, setLoading] = useState(false);
   const setSession = useTrackingStore((s) => s.setSession);
+  const pendingJoin = useTrackingStore((s) => s.pendingJoin);
+  const setPendingJoin = useTrackingStore((s) => s.setPendingJoin);
+
+  useEffect(() => {
+    if (pendingJoin) {
+      setCampaignCode(pendingJoin.campaignCode);
+      setValidationCode(pendingJoin.validationCode);
+      setPendingJoin(null);
+    }
+  }, [pendingJoin]);
 
   const handleLogin = async () => {
     if (!campaignCode.trim() || !validationCode.trim() || !alias.trim()) {
