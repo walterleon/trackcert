@@ -33,12 +33,14 @@ router.post('/campaigns', auth_1.authMiddleware, campaignController_1.createCamp
 router.get('/campaigns/:id', auth_1.authMiddleware, campaignController_1.getCampaign);
 router.put('/campaigns/:id', auth_1.authMiddleware, campaignController_1.updateCampaign);
 router.post('/campaigns/:id/share-link', auth_1.authMiddleware, campaignController_1.generateShareLink);
+router.get('/campaigns/:id/trails', auth_1.authMiddleware, campaignController_1.getCampaignTrails);
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
 router.post('/driver/auth', campaignController_1.validateCampaign);
 router.post('/driver/locations', locationController_1.ingestLocations);
 router.post('/driver/photo', upload.single('photo'), driverController_1.uploadPhoto);
 // ─── Share page (public) ──────────────────────────────────────────────────────
 router.get('/share/:token', shareController_1.getShareData);
+router.get('/share/:token/trails', shareController_1.getShareTrails);
 // ─── Admin (super admin only) ─────────────────────────────────────────────────
 router.get('/admin/stats', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.getStats);
 router.get('/admin/companies', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.getCompanies);

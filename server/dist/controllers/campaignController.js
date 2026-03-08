@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCampaignStatus = exports.validateCampaign = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
+exports.getCampaignStatus = exports.getCampaignTrails = exports.validateCampaign = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
 const db_1 = __importDefault(require("../db"));
 const codes_1 = require("../utils/codes");
 const planLimits_1 = require("../utils/planLimits");
@@ -218,6 +218,44 @@ const validateCampaign = (req, res) => __awaiter(void 0, void 0, void 0, functio
     }
 });
 exports.validateCampaign = validateCampaign;
+// ─── Company: get campaign trails ────────────────────────────────────────────
+const getCampaignTrails = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const companyId = req.company.companyId;
+    const since = req.query.since
+        ? new Date(req.query.since)
+        : new Date(Date.now() - 2 * 60 * 60 * 1000); // default 2h ago
+    const limit = Math.min(Number(req.query.limit) || 500, 1000);
+    try {
+        const campaign = yield db_1.default.campaign.findFirst({ where: { id, companyId } });
+        if (!campaign) {
+            res.status(404).json({ error: 'Campaign not found' });
+            return;
+        }
+        const locations = yield db_1.default.location.findMany({
+            where: { campaignId: id, timestamp: { gte: since } },
+            orderBy: { timestamp: 'asc' },
+            select: { driverId: true, latitude: true, longitude: true, timestamp: true },
+        });
+        const trails = {};
+        for (const loc of locations) {
+            if (!trails[loc.driverId])
+                trails[loc.driverId] = [];
+            if (trails[loc.driverId].length < limit) {
+                trails[loc.driverId].push({
+                    lat: loc.latitude,
+                    lng: loc.longitude,
+                    ts: loc.timestamp.toISOString(),
+                });
+            }
+        }
+        res.json({ trails });
+    }
+    catch (_a) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.getCampaignTrails = getCampaignTrails;
 // ─── Legacy: get campaign status (public, by UUID) ────────────────────────────
 const getCampaignStatus = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;

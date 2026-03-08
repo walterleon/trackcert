@@ -1,13 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import { io, Socket } from 'socket.io-client';
 import { MapPin, Lock, AlertCircle } from 'lucide-react';
-import { apiGetShareData, type ShareData } from '../api/companyApi';
+import { apiGetShareData, apiGetShareTrails, type ShareData } from '../api/companyApi';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -15,6 +15,8 @@ const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25
 L.Marker.prototype.options.icon = DefaultIcon;
 
 const API_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+
+const TRAIL_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 interface LiveLoc {
   driverId: string;
@@ -29,9 +31,11 @@ export function TrackingPage() {
   const [pinInput, setPinInput] = useState('');
   const [shareData, setShareData] = useState<ShareData | null>(null);
   const [liveLocations, setLiveLocations] = useState<Record<string, LiveLoc>>({});
+  const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const socketRef = useRef<Socket | null>(null);
+  const pinRef = useRef('');
 
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +45,7 @@ export function TrackingPage() {
     try {
       const data = await apiGetShareData(token, pinInput);
       setShareData(data);
+      pinRef.current = pinInput;
 
       const initial: Record<string, LiveLoc> = {};
       data.drivers.forEach((d) => {
@@ -55,6 +60,15 @@ export function TrackingPage() {
         }
       });
       setLiveLocations(initial);
+
+      // Fetch trails
+      apiGetShareTrails(token, pinInput).then(({ trails: t }) => {
+        const parsed: Record<string, [number, number][]> = {};
+        for (const [dId, points] of Object.entries(t)) {
+          parsed[dId] = points.map((p) => [p.lat, p.lng]);
+        }
+        setTrails(parsed);
+      }).catch(() => {});
     } catch (err: any) {
       setError(err.message || 'PIN incorrecto o link inválido');
     } finally {
@@ -72,12 +86,45 @@ export function TrackingPage() {
     });
     socket.on('driver-moved', (data: LiveLoc) => {
       setLiveLocations((prev) => ({ ...prev, [data.driverId]: data }));
+      setTrails((prev) => {
+        const existing = prev[data.driverId] || [];
+        const last = existing[existing.length - 1];
+        if (last && last[0] === data.latitude && last[1] === data.longitude) return prev;
+        const updated = [...existing, [data.latitude, data.longitude] as [number, number]];
+        return { ...prev, [data.driverId]: updated.length > 1000 ? updated.slice(-1000) : updated };
+      });
     });
     return () => {
       socket.emit('leave-campaign', shareData.campaignId);
       socket.disconnect();
     };
   }, [shareData?.campaignId]);
+
+  // Auto-refresh share data every 30s
+  useEffect(() => {
+    if (!shareData || !token) return;
+    const interval = setInterval(() => {
+      apiGetShareData(token, pinRef.current).then((data) => {
+        setShareData(data);
+        setLiveLocations((prev) => {
+          const updated = { ...prev };
+          data.drivers.forEach((d) => {
+            if (d.lastLocation && !updated[d.id]) {
+              updated[d.id] = {
+                driverId: d.id,
+                alias: d.alias,
+                latitude: d.lastLocation.latitude,
+                longitude: d.lastLocation.longitude,
+                timestamp: d.lastLocation.timestamp,
+              };
+            }
+          });
+          return updated;
+        });
+      }).catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [shareData?.campaignId, token]);
 
   if (!shareData) {
     return (
@@ -176,6 +223,15 @@ export function TrackingPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          {Object.entries(trails).map(([driverId, positions], idx) =>
+            positions.length >= 2 ? (
+              <Polyline
+                key={`trail-${driverId}`}
+                positions={positions}
+                pathOptions={{ color: TRAIL_COLORS[idx % TRAIL_COLORS.length], weight: 3, opacity: 0.7 }}
+              />
+            ) : null
+          )}
           {Object.values(liveLocations).map((loc) => (
             <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]}>
               <Popup>

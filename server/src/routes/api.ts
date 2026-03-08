@@ -10,10 +10,11 @@ import {
   updateCampaign,
   generateShareLink,
   validateCampaign,
+  getCampaignTrails,
 } from '../controllers/campaignController';
 import { ingestLocations } from '../controllers/locationController';
 import { uploadPhoto } from '../controllers/driverController';
-import { getShareData } from '../controllers/shareController';
+import { getShareData, getShareTrails } from '../controllers/shareController';
 import { getStats, getCompanies, updateCompany, getAllActiveCampaigns } from '../controllers/adminController';
 import { authMiddleware, superAdminMiddleware } from '../middleware/auth';
 
@@ -40,6 +41,7 @@ router.post('/campaigns', authMiddleware as any, createCampaign as any);
 router.get('/campaigns/:id', authMiddleware as any, getCampaign as any);
 router.put('/campaigns/:id', authMiddleware as any, updateCampaign as any);
 router.post('/campaigns/:id/share-link', authMiddleware as any, generateShareLink as any);
+router.get('/campaigns/:id/trails', authMiddleware as any, getCampaignTrails as any);
 
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
 router.post('/driver/auth', validateCampaign);
@@ -48,6 +50,7 @@ router.post('/driver/photo', upload.single('photo'), uploadPhoto);
 
 // ─── Share page (public) ──────────────────────────────────────────────────────
 router.get('/share/:token', getShareData);
+router.get('/share/:token/trails', getShareTrails);
 
 // ─── Admin (super admin only) ─────────────────────────────────────────────────
 router.get('/admin/stats', authMiddleware as any, superAdminMiddleware as any, getStats as any);

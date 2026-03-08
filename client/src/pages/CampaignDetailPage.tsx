@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Share2, Copy, Eye, Camera, Users, Power, X } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -10,6 +10,7 @@ import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../store/useAuthStore';
 import {
   apiGetCampaign,
+  apiGetCampaignTrails,
   apiGenerateShareLink,
   apiUpdateCampaign,
   type CampaignDetail,
@@ -24,6 +25,8 @@ const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25
 L.Marker.prototype.options.icon = DefaultIcon;
 
 const API_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+
+const TRAIL_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 interface LiveLocation {
   driverId: string;
@@ -57,6 +60,7 @@ export function CampaignDetailPage() {
   const [shareLoading, setShareLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'map' | 'photos' | 'drivers'>('map');
+  const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
   const socketRef = useRef<Socket | null>(null);
 
   // Load campaign
@@ -79,6 +83,14 @@ export function CampaignDetailPage() {
           }
         });
         setLiveLocations(initial);
+        // Fetch trails
+        apiGetCampaignTrails(token, id).then(({ trails: t }) => {
+          const parsed: Record<string, [number, number][]> = {};
+          for (const [dId, points] of Object.entries(t)) {
+            parsed[dId] = points.map((p) => [p.lat, p.lng]);
+          }
+          setTrails(parsed);
+        }).catch(() => {});
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -94,12 +106,45 @@ export function CampaignDetailPage() {
     });
     socket.on('driver-moved', (data: LiveLocation) => {
       setLiveLocations((prev) => ({ ...prev, [data.driverId]: data }));
+      setTrails((prev) => {
+        const existing = prev[data.driverId] || [];
+        const last = existing[existing.length - 1];
+        if (last && last[0] === data.latitude && last[1] === data.longitude) return prev;
+        const updated = [...existing, [data.latitude, data.longitude] as [number, number]];
+        return { ...prev, [data.driverId]: updated.length > 1000 ? updated.slice(-1000) : updated };
+      });
     });
     return () => {
       socket.emit('leave-campaign', id);
       socket.disconnect();
     };
   }, [id]);
+
+  // Auto-refresh campaign data every 30s
+  useEffect(() => {
+    if (!token || !id) return;
+    const interval = setInterval(() => {
+      apiGetCampaign(token, id).then((data) => {
+        setCampaign(data);
+        setLiveLocations((prev) => {
+          const updated = { ...prev };
+          data.drivers.forEach((d) => {
+            if (d.locations[0] && !updated[d.id]) {
+              updated[d.id] = {
+                driverId: d.id,
+                alias: d.alias,
+                latitude: d.locations[0].latitude,
+                longitude: d.locations[0].longitude,
+                timestamp: d.locations[0].timestamp,
+              };
+            }
+          });
+          return updated;
+        });
+      }).catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [token, id]);
 
   const handleGenerateShareLink = async () => {
     if (!token || !id) return;
@@ -216,7 +261,7 @@ export function CampaignDetailPage() {
             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             <Copy className="w-4 h-4" />
-            {copied ? '¡Copiado!' : 'Link repartidores'}
+            {copied ? 'ï¿½Copiado!' : 'Link repartidores'}
           </button>
           <button
             onClick={handleGenerateShareLink}
@@ -323,6 +368,15 @@ export function CampaignDetailPage() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             {livePositions.length > 0 && <FitBounds positions={livePositions} />}
+            {Object.entries(trails).map(([driverId, positions], idx) =>
+              positions.length >= 2 ? (
+                <Polyline
+                  key={`trail-${driverId}`}
+                  positions={positions}
+                  pathOptions={{ color: TRAIL_COLORS[idx % TRAIL_COLORS.length], weight: 3, opacity: 0.7 }}
+                />
+              ) : null
+            )}
             {Object.values(liveLocations).map((loc) => (
               <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]}>
                 <Popup>

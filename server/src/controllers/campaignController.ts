@@ -232,6 +232,47 @@ export const validateCampaign = async (req: Request, res: Response): Promise<voi
   }
 };
 
+// ─── Company: get campaign trails ────────────────────────────────────────────
+
+export const getCampaignTrails = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const companyId = req.company!.companyId;
+  const since = req.query.since
+    ? new Date(req.query.since as string)
+    : new Date(Date.now() - 2 * 60 * 60 * 1000); // default 2h ago
+  const limit = Math.min(Number(req.query.limit) || 500, 1000);
+
+  try {
+    const campaign = await prisma.campaign.findFirst({ where: { id, companyId } });
+    if (!campaign) {
+      res.status(404).json({ error: 'Campaign not found' });
+      return;
+    }
+
+    const locations = await prisma.location.findMany({
+      where: { campaignId: id, timestamp: { gte: since } },
+      orderBy: { timestamp: 'asc' },
+      select: { driverId: true, latitude: true, longitude: true, timestamp: true },
+    });
+
+    const trails: Record<string, Array<{ lat: number; lng: number; ts: string }>> = {};
+    for (const loc of locations) {
+      if (!trails[loc.driverId]) trails[loc.driverId] = [];
+      if (trails[loc.driverId].length < limit) {
+        trails[loc.driverId].push({
+          lat: loc.latitude,
+          lng: loc.longitude,
+          ts: loc.timestamp.toISOString(),
+        });
+      }
+    }
+
+    res.json({ trails });
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 // ─── Legacy: get campaign status (public, by UUID) ────────────────────────────
 
 export const getCampaignStatus = async (req: Request, res: Response): Promise<void> => {

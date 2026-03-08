@@ -12,8 +12,52 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getShareData = void 0;
+exports.getShareData = exports.getShareTrails = void 0;
 const db_1 = __importDefault(require("../db"));
+const getShareTrails = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { token } = req.params;
+    const { pin, since: sinceParam } = req.query;
+    if (!pin) {
+        res.status(400).json({ error: 'PIN is required' });
+        return;
+    }
+    try {
+        const campaign = yield db_1.default.campaign.findUnique({ where: { shareToken: token } });
+        if (!campaign) {
+            res.status(404).json({ error: 'Share link not found or expired' });
+            return;
+        }
+        if (campaign.sharePin !== String(pin)) {
+            res.status(401).json({ error: 'Invalid PIN' });
+            return;
+        }
+        const since = sinceParam
+            ? new Date(sinceParam)
+            : new Date(Date.now() - 2 * 60 * 60 * 1000);
+        const locations = yield db_1.default.location.findMany({
+            where: { campaignId: campaign.id, timestamp: { gte: since } },
+            orderBy: { timestamp: 'asc' },
+            select: { driverId: true, latitude: true, longitude: true, timestamp: true },
+        });
+        const trails = {};
+        for (const loc of locations) {
+            if (!trails[loc.driverId])
+                trails[loc.driverId] = [];
+            if (trails[loc.driverId].length < 500) {
+                trails[loc.driverId].push({
+                    lat: loc.latitude,
+                    lng: loc.longitude,
+                    ts: loc.timestamp.toISOString(),
+                });
+            }
+        }
+        res.json({ trails });
+    }
+    catch (_a) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.getShareTrails = getShareTrails;
 const getShareData = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { token } = req.params;
     const { pin } = req.query;

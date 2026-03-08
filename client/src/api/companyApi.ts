@@ -135,6 +135,34 @@ export async function apiGenerateShareLink(
   return handle<{ shareUrl: string; sharePin: string; shareToken: string }>(res);
 }
 
+// ─── Trails ──────────────────────────────────────────────────────────────────
+
+export type TrailPoint = { lat: number; lng: number; ts: string };
+export type TrailsResponse = { trails: Record<string, TrailPoint[]> };
+
+export async function apiGetCampaignTrails(
+  token: string,
+  campaignId: string,
+  since?: string
+): Promise<TrailsResponse> {
+  const params = since ? `?since=${encodeURIComponent(since)}` : '';
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/trails${params}`, {
+    headers: authHeaders(token),
+  });
+  return handle<TrailsResponse>(res);
+}
+
+export async function apiGetShareTrails(
+  shareToken: string,
+  pin: string,
+  since?: string
+): Promise<TrailsResponse> {
+  const params = new URLSearchParams({ pin });
+  if (since) params.set('since', since);
+  const res = await fetch(`${API_BASE}/share/${shareToken}/trails?${params}`);
+  return handle<TrailsResponse>(res);
+}
+
 // ─── Share (public) ───────────────────────────────────────────────────────────
 
 export interface ShareData {
