@@ -6,7 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import { io, Socket } from 'socket.io-client';
-import { MapPin, Lock, AlertCircle } from 'lucide-react';
+import { MapPin, Lock, AlertCircle, Maximize2, Minimize2 } from 'lucide-react';
 import { apiGetShareData, apiGetShareTrails, type ShareData } from '../api/companyApi';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -32,6 +32,7 @@ export function TrackingPage() {
   const [shareData, setShareData] = useState<ShareData | null>(null);
   const [liveLocations, setLiveLocations] = useState<Record<string, LiveLoc>>({});
   const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const socketRef = useRef<Socket | null>(null);
@@ -109,14 +110,17 @@ export function TrackingPage() {
         setLiveLocations((prev) => {
           const updated = { ...prev };
           data.drivers.forEach((d) => {
-            if (d.lastLocation && !updated[d.id]) {
-              updated[d.id] = {
-                driverId: d.id,
-                alias: d.alias,
-                latitude: d.lastLocation.latitude,
-                longitude: d.lastLocation.longitude,
-                timestamp: d.lastLocation.timestamp,
-              };
+            if (d.lastLocation) {
+              const loc = d.lastLocation;
+              if (!updated[d.id] || new Date(loc.timestamp) > new Date(updated[d.id].timestamp)) {
+                updated[d.id] = {
+                  driverId: d.id,
+                  alias: d.alias,
+                  latitude: loc.latitude,
+                  longitude: loc.longitude,
+                  timestamp: loc.timestamp,
+                };
+              }
             }
           });
           return updated;
@@ -197,7 +201,7 @@ export function TrackingPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
       {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+      <header className={`bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between ${mapFullscreen ? 'hidden' : ''}`}>
         <div className="flex items-center gap-2">
           <div className="p-1.5 bg-blue-500/20 rounded-lg">
             <MapPin className="w-4 h-4 text-blue-400" />
@@ -218,6 +222,12 @@ export function TrackingPage() {
 
       {/* Map */}
       <div className="flex-1 relative">
+        <button
+          onClick={() => setMapFullscreen((f) => !f)}
+          className="absolute top-3 right-3 z-[1000] bg-gray-900/90 hover:bg-gray-800 text-white p-2 rounded-lg border border-gray-700 shadow-lg transition-colors"
+        >
+          {mapFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
         <MapContainer center={defaultCenter} zoom={14} style={{ height: '100%', width: '100%' }}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -244,7 +254,7 @@ export function TrackingPage() {
         </MapContainer>
 
         {/* Drivers panel */}
-        <div className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-72 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-3 shadow-xl">
+        <div className={`absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-72 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-3 shadow-xl ${mapFullscreen ? 'hidden' : ''}`}>
           <p className="text-xs text-gray-500 mb-2 font-medium">
             {Object.keys(liveLocations).length} repartidor(es) en tiempo real
           </p>

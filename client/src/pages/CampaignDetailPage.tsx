@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Share2, Copy, Eye, Camera, Users, Power, X } from 'lucide-react';
+import { ArrowLeft, Share2, Copy, Eye, Camera, Users, Power, X, Maximize2, Minimize2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -61,6 +61,7 @@ export function CampaignDetailPage() {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'map' | 'photos' | 'drivers'>('map');
   const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
   // Load campaign
@@ -129,14 +130,18 @@ export function CampaignDetailPage() {
         setLiveLocations((prev) => {
           const updated = { ...prev };
           data.drivers.forEach((d) => {
-            if (d.locations[0] && !updated[d.id]) {
-              updated[d.id] = {
-                driverId: d.id,
-                alias: d.alias,
-                latitude: d.locations[0].latitude,
-                longitude: d.locations[0].longitude,
-                timestamp: d.locations[0].timestamp,
-              };
+            if (d.locations[0]) {
+              const loc = d.locations[0];
+              // Update if no existing data or if API has newer timestamp
+              if (!updated[d.id] || new Date(loc.timestamp) > new Date(updated[d.id].timestamp)) {
+                updated[d.id] = {
+                  driverId: d.id,
+                  alias: d.alias,
+                  latitude: loc.latitude,
+                  longitude: loc.longitude,
+                  timestamp: loc.timestamp,
+                };
+              }
             }
           });
           return updated;
@@ -357,7 +362,18 @@ export function CampaignDetailPage() {
 
       {/* Tab content */}
       {activeTab === 'map' && (
-        <div className="rounded-xl overflow-hidden border border-gray-800" style={{ height: '480px' }}>
+        <div
+          className={`rounded-xl overflow-hidden border border-gray-800 relative ${
+            mapFullscreen ? 'fixed inset-0 z-50 rounded-none border-0' : ''
+          }`}
+          style={mapFullscreen ? {} : { height: '480px' }}
+        >
+          <button
+            onClick={() => setMapFullscreen((f) => !f)}
+            className="absolute top-3 right-3 z-[1000] bg-gray-900/90 hover:bg-gray-800 text-white p-2 rounded-lg border border-gray-700 shadow-lg transition-colors"
+          >
+            {mapFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
           <MapContainer
             center={livePositions[0] ?? [-34.6037, -58.3816]}
             zoom={13}
