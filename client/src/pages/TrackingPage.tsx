@@ -93,7 +93,7 @@ export function TrackingPage() {
   // Connect to socket after auth
   useEffect(() => {
     if (!shareData?.campaignId) return;
-    const socket = io(API_URL, { transports: ['websocket', 'polling'] });
+    const socket = io(API_URL, { transports: ['polling'] });
     socketRef.current = socket;
     socket.on('connect', () => {
       socket.emit('join-campaign', shareData.campaignId);
@@ -139,6 +139,13 @@ export function TrackingPage() {
           });
           return updated;
         });
+      }).catch(() => {});
+      apiGetShareTrails(token, pinRef.current).then(({ trails: t }) => {
+        const parsed: Record<string, [number, number][]> = {};
+        for (const [dId, points] of Object.entries(t)) {
+          parsed[dId] = points.map((p) => [p.lat, p.lng]);
+        }
+        setTrails(parsed);
       }).catch(() => {});
     }, 30000);
     return () => clearInterval(interval);

@@ -130,7 +130,7 @@ export function CampaignDetailPage() {
   // Socket.io real-time connection
   useEffect(() => {
     if (!id) return;
-    const socket = io(API_URL, { transports: ['websocket', 'polling'] });
+    const socket = io(API_URL, { transports: ['polling'] });
     socketRef.current = socket;
     socket.on('connect', () => {
       socket.emit('join-campaign', id);
@@ -181,6 +181,13 @@ export function CampaignDetailPage() {
           });
           return updated;
         });
+      }).catch(() => {});
+      apiGetCampaignTrails(token, id).then(({ trails: t }) => {
+        const parsed: Record<string, [number, number][]> = {};
+        for (const [dId, points] of Object.entries(t)) {
+          parsed[dId] = points.map((p) => [p.lat, p.lng]);
+        }
+        setTrails(parsed);
       }).catch(() => {});
     }, 30000);
     return () => clearInterval(interval);
