@@ -263,7 +263,7 @@ export function TrackingPage() {
             if (!driverTrail || driverTrail.length < 2 || hiddenDrivers.has(d.id)) return null;
             return (
               <Polyline
-                key={`trail-${d.id}`}
+                key={`trail-${d.id}-${driverTrail.length}`}
                 positions={driverTrail}
                 pathOptions={{ color: TRAIL_COLORS[idx % TRAIL_COLORS.length], weight: 4, opacity: 0.85 }}
               />
