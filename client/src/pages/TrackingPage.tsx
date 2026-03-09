@@ -258,15 +258,17 @@ export function TrackingPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MapResizer fullscreen={mapFullscreen} />
-          {Object.entries(trails).map(([driverId, positions], idx) =>
-            !hiddenDrivers.has(driverId) && positions.length >= 2 ? (
+          {shareData.drivers.map((d, idx) => {
+            const driverTrail = trails[d.id];
+            if (!driverTrail || driverTrail.length < 2 || hiddenDrivers.has(d.id)) return null;
+            return (
               <Polyline
-                key={`trail-${driverId}`}
-                positions={positions}
-                pathOptions={{ color: TRAIL_COLORS[idx % TRAIL_COLORS.length], weight: 3, opacity: 0.7 }}
+                key={`trail-${d.id}`}
+                positions={driverTrail}
+                pathOptions={{ color: TRAIL_COLORS[idx % TRAIL_COLORS.length], weight: 4, opacity: 0.85 }}
               />
-            ) : null
-          )}
+            );
+          })}
           {visibleLocations.map((loc) => {
             const live = isDriverLive(loc.timestamp);
             return (

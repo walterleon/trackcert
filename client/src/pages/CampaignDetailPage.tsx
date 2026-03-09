@@ -420,7 +420,7 @@ export function CampaignDetailPage() {
           </button>
 
           {/* Drivers visibility panel */}
-          <div className="absolute top-3 left-3 z-[1000] bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-2 shadow-xl max-h-60 overflow-y-auto">
+          <div className="absolute top-24 left-3 z-[1000] bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-2 shadow-xl max-h-60 overflow-y-auto">
             <p className="text-[10px] text-gray-500 font-medium mb-1 px-1">REPARTIDORES</p>
             {campaign.drivers.map((d, idx) => {
               const live = liveLocations[d.id];
@@ -463,15 +463,17 @@ export function CampaignDetailPage() {
             />
             <MapResizer fullscreen={mapFullscreen} />
             {livePositions.length > 0 && <FitBounds positions={livePositions} />}
-            {Object.entries(trails).map(([driverId, positions], idx) =>
-              !hiddenDrivers.has(driverId) && positions.length >= 2 ? (
+            {campaign.drivers.map((d, idx) => {
+              const driverTrail = trails[d.id];
+              if (!driverTrail || driverTrail.length < 2 || hiddenDrivers.has(d.id)) return null;
+              return (
                 <Polyline
-                  key={`trail-${driverId}`}
-                  positions={positions}
-                  pathOptions={{ color: TRAIL_COLORS[idx % TRAIL_COLORS.length], weight: 3, opacity: 0.7 }}
+                  key={`trail-${d.id}`}
+                  positions={driverTrail}
+                  pathOptions={{ color: TRAIL_COLORS[idx % TRAIL_COLORS.length], weight: 4, opacity: 0.85 }}
                 />
-              ) : null
-            )}
+              );
+            })}
             {visibleLocations.map((loc) => {
               const live = isDriverLive(loc.timestamp);
               return (
