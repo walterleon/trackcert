@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Share2, Copy, Eye, Camera, Users, Power, X, Maximize2, Minimize2 } from 'lucide-react';
+import { ArrowLeft, Share2, Copy, Eye, Camera, Users, Power, X, Maximize2, Minimize2, EyeOff } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -15,18 +15,26 @@ import {
   apiUpdateCampaign,
   type CampaignDetail,
   type Driver,
+  type Photo,
 } from '../api/companyApi';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// Fix default leaflet icons
 const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
+
+const CameraIcon = L.divIcon({
+  html: '<div style="background:#3b82f6;border:2px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>',
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+});
 
 const API_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
 
 const TRAIL_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const LIVE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
 
 interface LiveLocation {
   driverId: string;
@@ -38,6 +46,10 @@ interface LiveLocation {
   timestamp: string;
 }
 
+function isDriverLive(timestamp: string): boolean {
+  return Date.now() - new Date(timestamp).getTime() < LIVE_THRESHOLD_MS;
+}
+
 function FitBounds({ positions }: { positions: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
@@ -45,6 +57,14 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
       map.fitBounds(positions, { padding: [40, 40], maxZoom: 16 });
     }
   }, [positions.length]);
+  return null;
+}
+
+function MapResizer({ fullscreen }: { fullscreen: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    setTimeout(() => map.invalidateSize(), 100);
+  }, [fullscreen, map]);
   return null;
 }
 
@@ -62,7 +82,17 @@ export function CampaignDetailPage() {
   const [activeTab, setActiveTab] = useState<'map' | 'photos' | 'drivers'>('map');
   const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  const [hiddenDrivers, setHiddenDrivers] = useState<Set<string>>(new Set());
+  const [photos, setPhotos] = useState<(Photo & { driverAlias?: string })[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<(Photo & { driverAlias?: string }) | null>(null);
+  const [_tick, setTick] = useState(0);
   const socketRef = useRef<Socket | null>(null);
+
+  // Tick every 30s to re-render "live" vs "offline" status
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Load campaign
   useEffect(() => {
@@ -70,7 +100,8 @@ export function CampaignDetailPage() {
     apiGetCampaign(token, id)
       .then((data) => {
         setCampaign(data);
-        // Initialize live locations from last known positions
+        const driverMap = new Map(data.drivers.map((d) => [d.id, d.alias]));
+        setPhotos(data.photos.map((p) => ({ ...p, driverAlias: driverMap.get(p.driverId) || 'Desconocido' })));
         const initial: Record<string, LiveLocation> = {};
         data.drivers.forEach((d) => {
           if (d.locations[0]) {
@@ -84,7 +115,6 @@ export function CampaignDetailPage() {
           }
         });
         setLiveLocations(initial);
-        // Fetch trails
         apiGetCampaignTrails(token, id).then(({ trails: t }) => {
           const parsed: Record<string, [number, number][]> = {};
           for (const [dId, points] of Object.entries(t)) {
@@ -111,9 +141,13 @@ export function CampaignDetailPage() {
         const existing = prev[data.driverId] || [];
         const last = existing[existing.length - 1];
         if (last && last[0] === data.latitude && last[1] === data.longitude) return prev;
-        const updated = [...existing, [data.latitude, data.longitude] as [number, number]];
+        const newPoint: [number, number] = [data.latitude, data.longitude];
+        const updated = [...existing, newPoint];
         return { ...prev, [data.driverId]: updated.length > 1000 ? updated.slice(-1000) : updated };
       });
+    });
+    socket.on('photo-uploaded', (data: { driverId: string; alias: string; photo: Photo }) => {
+      setPhotos((prev) => [{ ...data.photo, driverAlias: data.alias }, ...prev]);
     });
     return () => {
       socket.emit('leave-campaign', id);
@@ -127,12 +161,13 @@ export function CampaignDetailPage() {
     const interval = setInterval(() => {
       apiGetCampaign(token, id).then((data) => {
         setCampaign(data);
+        const driverMap = new Map(data.drivers.map((d) => [d.id, d.alias]));
+        setPhotos(data.photos.map((p) => ({ ...p, driverAlias: driverMap.get(p.driverId) || 'Desconocido' })));
         setLiveLocations((prev) => {
           const updated = { ...prev };
           data.drivers.forEach((d) => {
             if (d.locations[0]) {
               const loc = d.locations[0];
-              // Update if no existing data or if API has newer timestamp
               if (!updated[d.id] || new Date(loc.timestamp) > new Date(updated[d.id].timestamp)) {
                 updated[d.id] = {
                   driverId: d.id,
@@ -150,6 +185,15 @@ export function CampaignDetailPage() {
     }, 30000);
     return () => clearInterval(interval);
   }, [token, id]);
+
+  const toggleDriverVisibility = useCallback((driverId: string) => {
+    setHiddenDrivers((prev) => {
+      const next = new Set(prev);
+      if (next.has(driverId)) next.delete(driverId);
+      else next.add(driverId);
+      return next;
+    });
+  }, []);
 
   const handleGenerateShareLink = async () => {
     if (!token || !id) return;
@@ -199,9 +243,9 @@ export function CampaignDetailPage() {
     );
   }
 
-  const livePositions = Object.values(liveLocations).map(
-    (l) => [l.latitude, l.longitude] as [number, number]
-  );
+  const visibleLocations = Object.values(liveLocations).filter((l) => !hiddenDrivers.has(l.driverId));
+  const livePositions = visibleLocations.map((l) => [l.latitude, l.longitude] as [number, number]);
+  const liveCount = Object.values(liveLocations).filter((l) => isDriverLive(l.timestamp)).length;
 
   return (
     <DashboardLayout>
@@ -266,7 +310,7 @@ export function CampaignDetailPage() {
             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             <Copy className="w-4 h-4" />
-            {copied ? '�Copiado!' : 'Link repartidores'}
+            {copied ? '¡Copiado!' : 'Link repartidores'}
           </button>
           <button
             onClick={handleGenerateShareLink}
@@ -346,14 +390,14 @@ export function CampaignDetailPage() {
         <StatCard
           icon={<Camera className="w-4 h-4" />}
           label="Fotos"
-          value={campaign.photos.length}
+          value={photos.length}
           onClick={() => setActiveTab('photos')}
           active={activeTab === 'photos'}
         />
         <StatCard
           icon={<div className="w-4 h-4 rounded-full border-2 border-current" />}
           label="En vivo"
-          value={Object.values(liveLocations).length}
+          value={liveCount}
           onClick={() => setActiveTab('map')}
           active={activeTab === 'map'}
           highlight
@@ -374,6 +418,40 @@ export function CampaignDetailPage() {
           >
             {mapFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
+
+          {/* Drivers visibility panel */}
+          <div className="absolute top-3 left-3 z-[1000] bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-2 shadow-xl max-h-60 overflow-y-auto">
+            <p className="text-[10px] text-gray-500 font-medium mb-1 px-1">REPARTIDORES</p>
+            {campaign.drivers.map((d, idx) => {
+              const live = liveLocations[d.id];
+              const isLive = live && isDriverLive(live.timestamp);
+              const hidden = hiddenDrivers.has(d.id);
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => toggleDriverVisibility(d.id)}
+                  className={`flex items-center gap-2 w-full text-left px-2 py-1 rounded-lg text-xs transition-colors ${
+                    hidden ? 'opacity-40 hover:opacity-60' : 'hover:bg-gray-800'
+                  }`}
+                >
+                  <div
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: hidden ? '#4b5563' : TRAIL_COLORS[idx % TRAIL_COLORS.length] }}
+                  />
+                  <span className={`font-medium ${hidden ? 'text-gray-500 line-through' : 'text-white'}`}>
+                    {d.alias}
+                  </span>
+                  <span className="ml-auto">
+                    {isLive && !hidden && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                    )}
+                    {hidden && <EyeOff className="w-3 h-3 text-gray-600" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           <MapContainer
             center={livePositions[0] ?? [-34.6037, -58.3816]}
             zoom={13}
@@ -383,9 +461,10 @@ export function CampaignDetailPage() {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
+            <MapResizer fullscreen={mapFullscreen} />
             {livePositions.length > 0 && <FitBounds positions={livePositions} />}
             {Object.entries(trails).map(([driverId, positions], idx) =>
-              positions.length >= 2 ? (
+              !hiddenDrivers.has(driverId) && positions.length >= 2 ? (
                 <Polyline
                   key={`trail-${driverId}`}
                   positions={positions}
@@ -393,18 +472,41 @@ export function CampaignDetailPage() {
                 />
               ) : null
             )}
-            {Object.values(liveLocations).map((loc) => (
-              <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]}>
+            {visibleLocations.map((loc) => {
+              const live = isDriverLive(loc.timestamp);
+              return (
+                <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]}>
+                  <Popup>
+                    <div className="text-sm">
+                      <strong>{loc.alias}</strong>
+                      <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${live ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {live ? 'En vivo' : 'Offline'}
+                      </span>
+                      <br />
+                      <span className="text-gray-500">
+                        {formatDistanceToNow(new Date(loc.timestamp), { addSuffix: true, locale: es })}
+                      </span>
+                      {loc.batteryLevel != null && (
+                        <><br /><span>Batería: {Math.round(loc.batteryLevel * 100)}%</span></>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
+            {/* Photo markers */}
+            {photos.filter((p) => !hiddenDrivers.has(p.driverId)).map((photo) => (
+              <Marker
+                key={`photo-${photo.id}`}
+                position={[photo.latitude, photo.longitude]}
+                icon={CameraIcon}
+                eventHandlers={{ click: () => setSelectedPhoto(photo) }}
+              >
                 <Popup>
                   <div className="text-sm">
-                    <strong>{loc.alias}</strong>
+                    <strong>{photo.driverAlias}</strong>
                     <br />
-                    <span className="text-gray-500">
-                      {formatDistanceToNow(new Date(loc.timestamp), { addSuffix: true, locale: es })}
-                    </span>
-                    {loc.batteryLevel != null && (
-                      <><br /><span>Batería: {Math.round(loc.batteryLevel * 100)}%</span></>
-                    )}
+                    <span className="text-gray-500">{format(new Date(photo.takenAt), "d MMM yyyy HH:mm", { locale: es })}</span>
                   </div>
                 </Popup>
               </Marker>
@@ -424,8 +526,15 @@ export function CampaignDetailPage() {
               </p>
             </div>
           ) : (
-            campaign.drivers.map((driver) => (
-              <DriverRow key={driver.id} driver={driver} liveLocation={liveLocations[driver.id]} />
+            campaign.drivers.map((driver, idx) => (
+              <DriverRow
+                key={driver.id}
+                driver={driver}
+                liveLocation={liveLocations[driver.id]}
+                color={TRAIL_COLORS[idx % TRAIL_COLORS.length]}
+                hidden={hiddenDrivers.has(driver.id)}
+                onToggleVisibility={() => toggleDriverVisibility(driver.id)}
+              />
             ))
           )}
         </div>
@@ -433,17 +542,18 @@ export function CampaignDetailPage() {
 
       {activeTab === 'photos' && (
         <div>
-          {campaign.photos.length === 0 ? (
+          {photos.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Camera className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p>Sin fotos todavía</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {campaign.photos.map((photo) => (
-                <div
+              {photos.map((photo) => (
+                <button
                   key={photo.id}
-                  className="aspect-square rounded-lg overflow-hidden bg-gray-800 border border-gray-700"
+                  onClick={() => setSelectedPhoto(photo)}
+                  className="aspect-square rounded-lg overflow-hidden bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors relative group"
                 >
                   <img
                     src={`${API_URL}${photo.fileUrl}`}
@@ -451,10 +561,60 @@ export function CampaignDetailPage() {
                     className="w-full h-full object-cover"
                     loading="lazy"
                   />
-                </div>
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p className="text-white text-xs font-medium truncate">{photo.driverAlias}</p>
+                    <p className="text-gray-300 text-[10px]">{format(new Date(photo.takenAt), "d MMM HH:mm", { locale: es })}</p>
+                  </div>
+                </button>
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Photo modal */}
+      {selectedPhoto && (
+        <div
+          className="fixed inset-0 z-[2000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative">
+              <img
+                src={`${API_URL}${selectedPhoto.fileUrl}`}
+                alt="Foto de entrega"
+                className="w-full max-h-[60vh] object-contain bg-black"
+              />
+              <button
+                onClick={() => setSelectedPhoto(null)}
+                className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white p-2 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white font-semibold">{selectedPhoto.driverAlias}</p>
+                  <p className="text-gray-400 text-sm">
+                    {format(new Date(selectedPhoto.takenAt), "EEEE d 'de' MMMM yyyy, HH:mm:ss", { locale: es })}
+                  </p>
+                </div>
+                <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-1 rounded-full font-medium">
+                  Prueba de entrega
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-gray-500">
+                <span className="font-mono">
+                  📍 {selectedPhoto.latitude.toFixed(5)}, {selectedPhoto.longitude.toFixed(5)}
+                </span>
+                <span>ID: {selectedPhoto.id.slice(0, 8)}</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </DashboardLayout>
@@ -496,36 +656,62 @@ function StatCard({
   );
 }
 
-function DriverRow({ driver, liveLocation }: { driver: Driver; liveLocation?: LiveLocation }) {
-  const isLive = !!liveLocation;
+function DriverRow({
+  driver,
+  liveLocation,
+  color,
+  hidden,
+  onToggleVisibility,
+}: {
+  driver: Driver;
+  liveLocation?: LiveLocation;
+  color: string;
+  hidden: boolean;
+  onToggleVisibility: () => void;
+}) {
   const lastSeen = liveLocation?.timestamp ?? driver.lastSeenAt;
+  const isLive = liveLocation ? isDriverLive(liveLocation.timestamp) : false;
 
   return (
-    <div className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
+    <div className={`flex items-center justify-between bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 ${hidden ? 'opacity-50' : ''}`}>
       <div className="flex items-center gap-3">
-        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`} />
+        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
         <div>
           <p className="text-white font-medium">{driver.alias}</p>
           {lastSeen && (
             <p className="text-xs text-gray-500">
-              {isLive ? 'En vivo · ' : 'Última vez '}
+              {isLive ? (
+                <span className="text-emerald-400">En vivo</span>
+              ) : (
+                <span>Offline</span>
+              )}
+              {' · '}
               {formatDistanceToNow(new Date(lastSeen), { addSuffix: true, locale: es })}
             </p>
           )}
         </div>
       </div>
-      {liveLocation && (
-        <div className="text-right">
-          <p className="text-xs font-mono text-gray-400">
-            {liveLocation.latitude.toFixed(4)}, {liveLocation.longitude.toFixed(4)}
-          </p>
-          {liveLocation.batteryLevel != null && (
-            <p className="text-xs text-gray-600">
-              🔋 {Math.round(liveLocation.batteryLevel * 100)}%
+      <div className="flex items-center gap-3">
+        {liveLocation && (
+          <div className="text-right">
+            <p className="text-xs font-mono text-gray-400">
+              {liveLocation.latitude.toFixed(4)}, {liveLocation.longitude.toFixed(4)}
             </p>
-          )}
-        </div>
-      )}
+            {liveLocation.batteryLevel != null && (
+              <p className="text-xs text-gray-600">
+                🔋 {Math.round(liveLocation.batteryLevel * 100)}%
+              </p>
+            )}
+          </div>
+        )}
+        <button
+          onClick={onToggleVisibility}
+          className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          title={hidden ? 'Mostrar en mapa' : 'Ocultar del mapa'}
+        >
+          {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
     </div>
   );
 }

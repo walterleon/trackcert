@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import { io, Socket } from 'socket.io-client';
-import { MapPin, Lock, AlertCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { MapPin, Lock, AlertCircle, Maximize2, Minimize2, EyeOff } from 'lucide-react';
 import { apiGetShareData, apiGetShareTrails, type ShareData } from '../api/companyApi';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -17,6 +17,7 @@ L.Marker.prototype.options.icon = DefaultIcon;
 const API_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
 
 const TRAIL_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const LIVE_THRESHOLD_MS = 3 * 60 * 1000;
 
 interface LiveLoc {
   driverId: string;
@@ -26,6 +27,18 @@ interface LiveLoc {
   timestamp: string;
 }
 
+function isDriverLive(timestamp: string): boolean {
+  return Date.now() - new Date(timestamp).getTime() < LIVE_THRESHOLD_MS;
+}
+
+function MapResizer({ fullscreen }: { fullscreen: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    setTimeout(() => map.invalidateSize(), 100);
+  }, [fullscreen, map]);
+  return null;
+}
+
 export function TrackingPage() {
   const { token } = useParams<{ token: string }>();
   const [pinInput, setPinInput] = useState('');
@@ -33,6 +46,7 @@ export function TrackingPage() {
   const [liveLocations, setLiveLocations] = useState<Record<string, LiveLoc>>({});
   const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  const [hiddenDrivers, setHiddenDrivers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const socketRef = useRef<Socket | null>(null);
@@ -62,7 +76,6 @@ export function TrackingPage() {
       });
       setLiveLocations(initial);
 
-      // Fetch trails
       apiGetShareTrails(token, pinInput).then(({ trails: t }) => {
         const parsed: Record<string, [number, number][]> = {};
         for (const [dId, points] of Object.entries(t)) {
@@ -91,7 +104,8 @@ export function TrackingPage() {
         const existing = prev[data.driverId] || [];
         const last = existing[existing.length - 1];
         if (last && last[0] === data.latitude && last[1] === data.longitude) return prev;
-        const updated = [...existing, [data.latitude, data.longitude] as [number, number]];
+        const newPoint: [number, number] = [data.latitude, data.longitude];
+        const updated = [...existing, newPoint];
         return { ...prev, [data.driverId]: updated.length > 1000 ? updated.slice(-1000) : updated };
       });
     });
@@ -129,6 +143,15 @@ export function TrackingPage() {
     }, 30000);
     return () => clearInterval(interval);
   }, [shareData?.campaignId, token]);
+
+  const toggleDriverVisibility = (driverId: string) => {
+    setHiddenDrivers((prev) => {
+      const next = new Set(prev);
+      if (next.has(driverId)) next.delete(driverId);
+      else next.add(driverId);
+      return next;
+    });
+  };
 
   if (!shareData) {
     return (
@@ -192,33 +215,34 @@ export function TrackingPage() {
     );
   }
 
-  const positions = Object.values(liveLocations).map(
-    (l) => [l.latitude, l.longitude] as [number, number]
-  );
-
+  const visibleLocations = Object.values(liveLocations).filter((l) => !hiddenDrivers.has(l.driverId));
+  const positions = visibleLocations.map((l) => [l.latitude, l.longitude] as [number, number]);
   const defaultCenter: [number, number] = positions[0] ?? [-34.6037, -58.3816];
+  const liveCount = Object.values(liveLocations).filter((l) => isDriverLive(l.timestamp)).length;
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
+    <div className={`min-h-screen bg-gray-950 flex flex-col ${mapFullscreen ? 'fixed inset-0 z-50' : ''}`}>
       {/* Header */}
-      <header className={`bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between ${mapFullscreen ? 'hidden' : ''}`}>
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-blue-500/20 rounded-lg">
-            <MapPin className="w-4 h-4 text-blue-400" />
+      {!mapFullscreen && (
+        <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-500/20 rounded-lg">
+              <MapPin className="w-4 h-4 text-blue-400" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">{shareData.companyName}</p>
+              <p className="text-sm font-semibold text-white">{shareData.title}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-gray-500">{shareData.companyName}</p>
-            <p className="text-sm font-semibold text-white">{shareData.title}</p>
-          </div>
-        </div>
-        <span
-          className={`text-xs px-2 py-1 rounded-full font-medium ${
-            shareData.isActive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-gray-800 text-gray-500'
-          }`}
-        >
-          {shareData.isActive ? '🟢 En curso' : '⚫ Finalizada'}
-        </span>
-      </header>
+          <span
+            className={`text-xs px-2 py-1 rounded-full font-medium ${
+              shareData.isActive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-gray-800 text-gray-500'
+            }`}
+          >
+            {shareData.isActive ? '🟢 En curso' : '⚫ Finalizada'}
+          </span>
+        </header>
+      )}
 
       {/* Map */}
       <div className="flex-1 relative">
@@ -233,8 +257,9 @@ export function TrackingPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <MapResizer fullscreen={mapFullscreen} />
           {Object.entries(trails).map(([driverId, positions], idx) =>
-            positions.length >= 2 ? (
+            !hiddenDrivers.has(driverId) && positions.length >= 2 ? (
               <Polyline
                 key={`trail-${driverId}`}
                 positions={positions}
@@ -242,39 +267,58 @@ export function TrackingPage() {
               />
             ) : null
           )}
-          {Object.values(liveLocations).map((loc) => (
-            <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]}>
-              <Popup>
-                <strong>{loc.alias}</strong>
-                <br />
-                {formatDistanceToNow(new Date(loc.timestamp), { addSuffix: true, locale: es })}
-              </Popup>
-            </Marker>
-          ))}
+          {visibleLocations.map((loc) => {
+            const live = isDriverLive(loc.timestamp);
+            return (
+              <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]}>
+                <Popup>
+                  <strong>{loc.alias}</strong>
+                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${live ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {live ? 'En vivo' : 'Offline'}
+                  </span>
+                  <br />
+                  {formatDistanceToNow(new Date(loc.timestamp), { addSuffix: true, locale: es })}
+                </Popup>
+              </Marker>
+            );
+          })}
         </MapContainer>
 
         {/* Drivers panel */}
-        <div className={`absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-72 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-3 shadow-xl ${mapFullscreen ? 'hidden' : ''}`}>
+        <div className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-72 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-3 shadow-xl">
           <p className="text-xs text-gray-500 mb-2 font-medium">
-            {Object.keys(liveLocations).length} repartidor(es) en tiempo real
+            {liveCount} en vivo · {Object.keys(liveLocations).length} total
           </p>
-          <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {shareData.drivers.map((d) => {
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            {shareData.drivers.map((d, idx) => {
               const live = liveLocations[d.id];
+              const isLive = live && isDriverLive(live.timestamp);
+              const hidden = hiddenDrivers.has(d.id);
               return (
-                <div key={d.id} className="flex items-center gap-2 text-sm">
+                <button
+                  key={d.id}
+                  onClick={() => toggleDriverVisibility(d.id)}
+                  className={`flex items-center gap-2 text-sm w-full text-left px-1 py-0.5 rounded transition-colors ${
+                    hidden ? 'opacity-40' : 'hover:bg-gray-800/50'
+                  }`}
+                >
                   <div
-                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      live ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'
-                    }`}
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: hidden ? '#4b5563' : TRAIL_COLORS[idx % TRAIL_COLORS.length] }}
                   />
-                  <span className="text-white font-medium">{d.alias}</span>
-                  {live && (
+                  <span className={`font-medium ${hidden ? 'text-gray-500 line-through' : 'text-white'}`}>
+                    {d.alias}
+                  </span>
+                  {isLive && !hidden && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                  )}
+                  {live && !hidden && (
                     <span className="text-gray-500 text-xs ml-auto">
                       {formatDistanceToNow(new Date(live.timestamp), { addSuffix: true, locale: es })}
                     </span>
                   )}
-                </div>
+                  {hidden && <EyeOff className="w-3 h-3 text-gray-600 ml-auto" />}
+                </button>
               );
             })}
           </div>
