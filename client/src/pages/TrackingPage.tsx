@@ -221,7 +221,10 @@ export function TrackingPage() {
   const liveCount = Object.values(liveLocations).filter((l) => isDriverLive(l.timestamp)).length;
 
   return (
-    <div className={`min-h-screen bg-gray-950 flex flex-col ${mapFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+    <div
+      className={`min-h-screen bg-gray-950 flex flex-col`}
+      style={mapFullscreen ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, background: '#030712' } : undefined}
+    >
       {/* Header */}
       {!mapFullscreen && (
         <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">

@@ -408,9 +408,9 @@ export function CampaignDetailPage() {
       {activeTab === 'map' && (
         <div
           className={`rounded-xl overflow-hidden border border-gray-800 relative ${
-            mapFullscreen ? 'fixed inset-0 z-50 rounded-none border-0' : ''
+            mapFullscreen ? 'rounded-none border-0' : ''
           }`}
-          style={mapFullscreen ? {} : { height: '480px' }}
+          style={mapFullscreen ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, background: '#030712' } : { height: '480px' }}
         >
           <button
             onClick={() => setMapFullscreen((f) => !f)}
