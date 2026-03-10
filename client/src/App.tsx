@@ -6,12 +6,16 @@ import { CampaignDetailPage } from './pages/CampaignDetailPage';
 import { CampaignFormPage } from './pages/CampaignFormPage';
 import { TrackingPage } from './pages/TrackingPage';
 import { JoinPage } from './pages/JoinPage';
+import { LandingPage } from './pages/LandingPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Landing */}
+        <Route path="/" element={<LandingPage />} />
+
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -25,9 +29,8 @@ export default function App() {
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
         </Route>
 
-        {/* Default redirect */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
