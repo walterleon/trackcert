@@ -24,17 +24,45 @@ import { es } from 'date-fns/locale';
 const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
+const driverIconCache: Record<string, L.DivIcon> = {};
+function driverIcon(color: string, live: boolean) {
+  const key = `${color}-${live}`;
+  if (!driverIconCache[key]) {
+    const pulse = live
+      ? `<span style="position:absolute;inset:-4px;border-radius:50%;border:2px solid ${color};opacity:.5;animation:ping 1.5s cubic-bezier(0,0,.2,1) infinite"></span>`
+      : '';
+    driverIconCache[key] = L.divIcon({
+      html: `<div style="position:relative;display:flex;align-items:center;justify-content:center">
+        ${pulse}
+        <span style="width:18px;height:18px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);display:block${live ? '' : ';opacity:.55'}"></span>
+      </div>`,
+      className: '',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    });
+  }
+  return driverIconCache[key];
+}
+
 const CameraIcon = L.divIcon({
-  html: '<div style="background:#3b82f6;border:2px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>',
+  html: '<div style="background:#3b82f6;border:2px solid #fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>',
   className: '',
-  iconSize: [28, 28],
-  iconAnchor: [14, 14],
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
 });
 
 const API_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
 
 const TRAIL_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 const LIVE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
+
+// Inject ping keyframe for live driver pulse animation
+if (typeof document !== 'undefined' && !document.getElementById('driver-ping-css')) {
+  const style = document.createElement('style');
+  style.id = 'driver-ping-css';
+  style.textContent = '@keyframes ping{0%{transform:scale(1);opacity:.5}75%,100%{transform:scale(2.2);opacity:0}}';
+  document.head.appendChild(style);
+}
 
 interface LiveLocation {
   driverId: string;
@@ -483,8 +511,10 @@ export function CampaignDetailPage() {
             })}
             {visibleLocations.map((loc) => {
               const live = isDriverLive(loc.timestamp);
+              const dIdx = campaign.drivers.findIndex((d) => d.id === loc.driverId);
+              const color = TRAIL_COLORS[(dIdx === -1 ? 0 : dIdx) % TRAIL_COLORS.length];
               return (
-                <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]}>
+                <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]} icon={driverIcon(color, live)}>
                   <Popup>
                     <div className="text-sm">
                       <strong>{loc.alias}</strong>

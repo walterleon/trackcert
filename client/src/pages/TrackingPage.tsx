@@ -14,10 +14,37 @@ import { es } from 'date-fns/locale';
 const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
+const driverIconCache: Record<string, L.DivIcon> = {};
+function driverIcon(color: string, live: boolean) {
+  const key = `${color}-${live}`;
+  if (!driverIconCache[key]) {
+    const pulse = live
+      ? `<span style="position:absolute;inset:-4px;border-radius:50%;border:2px solid ${color};opacity:.5;animation:ping 1.5s cubic-bezier(0,0,.2,1) infinite"></span>`
+      : '';
+    driverIconCache[key] = L.divIcon({
+      html: `<div style="position:relative;display:flex;align-items:center;justify-content:center">
+        ${pulse}
+        <span style="width:18px;height:18px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);display:block${live ? '' : ';opacity:.55'}"></span>
+      </div>`,
+      className: '',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    });
+  }
+  return driverIconCache[key];
+}
+
 const API_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
 
 const TRAIL_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 const LIVE_THRESHOLD_MS = 3 * 60 * 1000;
+
+if (typeof document !== 'undefined' && !document.getElementById('driver-ping-css')) {
+  const style = document.createElement('style');
+  style.id = 'driver-ping-css';
+  style.textContent = '@keyframes ping{0%{transform:scale(1);opacity:.5}75%,100%{transform:scale(2.2);opacity:0}}';
+  document.head.appendChild(style);
+}
 
 interface LiveLoc {
   driverId: string;
@@ -281,8 +308,10 @@ export function TrackingPage() {
           })}
           {visibleLocations.map((loc) => {
             const live = isDriverLive(loc.timestamp);
+            const dIdx = shareData.drivers.findIndex((d) => d.id === loc.driverId);
+            const color = TRAIL_COLORS[(dIdx === -1 ? 0 : dIdx) % TRAIL_COLORS.length];
             return (
-              <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]}>
+              <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]} icon={driverIcon(color, live)}>
                 <Popup>
                   <strong>{loc.alias}</strong>
                   <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${live ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
