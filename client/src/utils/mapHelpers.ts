@@ -59,17 +59,20 @@ function arrowIcon(angle: number, color: string): L.DivIcon {
   return arrowIconCache[key];
 }
 
-/** Get arrow positions+icons spread along a trail */
+/** Get arrow positions+icons at the midpoint of every Nth segment */
 export function getTrailArrows(
   trail: [number, number][],
   color: string,
-  everyNPoints: number = 15
+  everyNSegments: number = 5
 ): { position: [number, number]; icon: L.DivIcon }[] {
   if (trail.length < 3) return [];
   const arrows: { position: [number, number]; icon: L.DivIcon }[] = [];
-  for (let i = everyNPoints; i < trail.length - 1; i += everyNPoints) {
-    const angle = bearing(trail[i - 1], trail[i + 1] || trail[i]);
-    arrows.push({ position: trail[i], icon: arrowIcon(angle, color) });
+  for (let i = everyNSegments - 1; i < trail.length - 1; i += everyNSegments) {
+    const a = trail[i];
+    const b = trail[i + 1];
+    const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const angle = bearing(a, b);
+    arrows.push({ position: mid, icon: arrowIcon(angle, color) });
   }
   return arrows;
 }
