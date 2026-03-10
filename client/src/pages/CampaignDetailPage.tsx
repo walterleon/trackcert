@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import { io, Socket } from 'socket.io-client';
+import { reverseGeocode, streetViewUrl, getTrailArrows } from '../utils/mapHelpers';
 import { useAuthStore } from '../store/useAuthStore';
 import {
   apiGetCampaign,
@@ -94,6 +95,35 @@ function MapResizer({ fullscreen }: { fullscreen: boolean }) {
     setTimeout(() => map.invalidateSize(), 100);
   }, [fullscreen, map]);
   return null;
+}
+
+function DriverPopupContent({ alias, lat, lng, timestamp, live, batteryLevel }: {
+  alias: string; lat: number; lng: number; timestamp: string; live: boolean; batteryLevel?: number;
+}) {
+  const [address, setAddress] = useState('Cargando...');
+  useEffect(() => { reverseGeocode(lat, lng).then(setAddress); }, [lat, lng]);
+  return (
+    <div style={{ fontSize: '13px', lineHeight: '1.5', minWidth: 180 }}>
+      <strong>{alias}</strong>
+      <span style={{ marginLeft: 6, fontSize: 11, padding: '1px 6px', borderRadius: 4, background: live ? '#d1fae5' : '#f3f4f6', color: live ? '#047857' : '#6b7280' }}>
+        {live ? 'En vivo' : 'Offline'}
+      </span>
+      <br />
+      <span style={{ color: '#6b7280', fontSize: 12 }}>
+        {formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: es })}
+      </span>
+      {batteryLevel != null && (
+        <span style={{ marginLeft: 8, fontSize: 12 }}>🔋 {Math.round(batteryLevel * 100)}%</span>
+      )}
+      <br />
+      <span style={{ color: '#374151', fontSize: 12 }}>📍 {address}</span>
+      <br />
+      <a href={streetViewUrl(lat, lng)} target="_blank" rel="noopener noreferrer"
+        style={{ fontSize: 12, color: '#2563eb', textDecoration: 'none' }}>
+        🛣️ Ver en Street View
+      </a>
+    </div>
+  );
 }
 
 export function CampaignDetailPage() {
@@ -501,13 +531,17 @@ export function CampaignDetailPage() {
             {campaign.drivers.map((d, idx) => {
               const driverTrail = trails[d.id];
               if (!driverTrail || driverTrail.length < 2 || hiddenDrivers.has(d.id)) return null;
-              return (
+              const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+              return [
                 <Polyline
                   key={`trail-${d.id}-${driverTrail.length}`}
                   positions={driverTrail}
-                  pathOptions={{ color: TRAIL_COLORS[idx % TRAIL_COLORS.length], weight: 4, opacity: 0.85 }}
-                />
-              );
+                  pathOptions={{ color, weight: 4, opacity: 0.85 }}
+                />,
+                ...getTrailArrows(driverTrail, color).map((arrow, ai) => (
+                  <Marker key={`arrow-${d.id}-${ai}`} position={arrow.position} icon={arrow.icon} interactive={false} />
+                )),
+              ];
             })}
             {visibleLocations.map((loc) => {
               const live = isDriverLive(loc.timestamp);
@@ -516,19 +550,7 @@ export function CampaignDetailPage() {
               return (
                 <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]} icon={driverIcon(color, live)}>
                   <Popup>
-                    <div className="text-sm">
-                      <strong>{loc.alias}</strong>
-                      <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${live ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {live ? 'En vivo' : 'Offline'}
-                      </span>
-                      <br />
-                      <span className="text-gray-500">
-                        {formatDistanceToNow(new Date(loc.timestamp), { addSuffix: true, locale: es })}
-                      </span>
-                      {loc.batteryLevel != null && (
-                        <><br /><span>Batería: {Math.round(loc.batteryLevel * 100)}%</span></>
-                      )}
-                    </div>
+                    <DriverPopupContent alias={loc.alias} lat={loc.latitude} lng={loc.longitude} timestamp={loc.timestamp} live={live} batteryLevel={loc.batteryLevel} />
                   </Popup>
                 </Marker>
               );
