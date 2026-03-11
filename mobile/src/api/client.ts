@@ -59,8 +59,20 @@ export async function uploadPhoto(
     name: `photo_${Date.now()}.jpg`,
   } as any);
 
-  const { data } = await api.post('/driver/photo', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return data;
+  // Use fetch instead of axios — axios has intermittent multipart failures on RN
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(`${BASE_URL}/driver/photo`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
 }

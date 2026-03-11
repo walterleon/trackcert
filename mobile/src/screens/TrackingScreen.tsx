@@ -381,6 +381,8 @@ export function TrackingScreen() {
       mediaType: 'photo',
       quality: 0.7,
       saveToPhotos: false,
+      maxWidth: 1920,
+      maxHeight: 1920,
     };
 
     launchCamera(options, async (response) => {
@@ -436,7 +438,7 @@ export function TrackingScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.campaignName}>{session?.campaignTitle} <Text style={{ fontSize: 10, color: '#6b7280' }}>v5</Text></Text>
+          <Text style={styles.campaignName}>{session?.campaignTitle} <Text style={{ fontSize: 10, color: '#6b7280' }}>v6</Text></Text>
           <Text style={styles.statusText}>
             {isTracking
               ? bgServiceRunning

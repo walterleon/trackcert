@@ -568,6 +568,15 @@ export function CampaignDetailPage() {
                     <strong>{photo.driverAlias}</strong>
                     <br />
                     <span className="text-gray-500">{format(new Date(photo.takenAt), "d MMM yyyy HH:mm", { locale: es })}</span>
+                    <br />
+                    <a
+                      href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${photo.latitude},${photo.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', fontSize: '12px', textDecoration: 'none' }}
+                    >
+                      Street View
+                    </a>
                   </div>
                 </Popup>
               </Marker>
@@ -672,6 +681,14 @@ export function CampaignDetailPage() {
                 <span className="font-mono">
                   📍 {selectedPhoto.latitude.toFixed(5)}, {selectedPhoto.longitude.toFixed(5)}
                 </span>
+                <a
+                  href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${selectedPhoto.latitude},${selectedPhoto.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Street View
+                </a>
                 <span>ID: {selectedPhoto.id.slice(0, 8)}</span>
               </div>
             </div>
