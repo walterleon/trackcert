@@ -3,31 +3,254 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Alert,
   Platform,
   PermissionsAndroid,
+  AppState,
+  AppStateStatus,
+  Linking,
 } from 'react-native';
 import Geolocation from 'react-native-geolocation-service';
+import BackgroundService from 'react-native-background-actions';
 import { launchCamera, CameraOptions } from 'react-native-image-picker';
 import { sendLocations, uploadPhoto } from '../api/client';
 import { useTrackingStore } from '../store/useTrackingStore';
 
-// On Samsung + Android 12+/16, PermissionsAndroid.check() can return false even after
-// the user grants the permission. We just show the dialog and let the native location
-// API decide if the permission is truly available.
-async function ensureLocationPermissionRequested(): Promise<void> {
-  if (Platform.OS !== 'android') return;
+// --------------- Permission helpers ---------------
+
+async function requestLocationPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
   try {
-    await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-  } catch {}
+    const result = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Permiso de ubicación',
+        message:
+          'RastreoYa necesita acceder a tu ubicación para rastrear las entregas en tiempo real.',
+        buttonPositive: 'Permitir',
+        buttonNegative: 'Denegar',
+      },
+    );
+    if (result === 'never_ask_again') {
+      Alert.alert(
+        'Ubicación bloqueada',
+        'El permiso de ubicación fue denegado permanentemente.\n\nActivalo manualmente:\nConfiguración → Permisos → Ubicación → Permitir',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Abrir Configuración', onPress: () => Linking.openSettings() },
+        ],
+      );
+      return false;
+    }
+    return true;
+  } catch {
+    return true; // Samsung workaround: proceed anyway
+  }
 }
+
+async function requestBackgroundLocation(): Promise<void> {
+  if (Platform.OS !== 'android' || (Platform.Version as number) < 29) return;
+  try {
+    const result = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+      {
+        title: 'Ubicación en segundo plano',
+        message:
+          'Para seguir rastreando cuando minimices la app, seleccioná "Permitir todo el tiempo" en la siguiente pantalla.',
+        buttonPositive: 'Continuar',
+        buttonNegative: 'Ahora no',
+      },
+    );
+    if (result !== 'granted') {
+      Alert.alert(
+        'Tracking limitado',
+        'Sin el permiso de ubicación "todo el tiempo", el tracking se pausará al minimizar la app.\n\nPodés cambiarlo después en:\nConfiguración → Permisos → Ubicación → Permitir todo el tiempo',
+      );
+    }
+  } catch {
+    // Samsung workaround: ignore check failures
+  }
+}
+
+async function requestCameraPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  try {
+    const result = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+      {
+        title: 'Permiso de cámara',
+        message: 'RastreoYa necesita la cámara para tomar fotos de las entregas.',
+        buttonPositive: 'Permitir',
+        buttonNegative: 'Denegar',
+      },
+    );
+    if (result === 'never_ask_again') {
+      Alert.alert(
+        'Cámara bloqueada',
+        'El permiso de cámara fue denegado permanentemente.\n\nActivalo manualmente:\nConfiguración → Permisos → Cámara → Permitir',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Abrir Configuración', onPress: () => Linking.openSettings() },
+        ],
+      );
+      return false;
+    }
+    if (result === 'denied') {
+      Alert.alert(
+        'Permiso de cámara necesario',
+        'Para tomar fotos de entrega necesitás permitir el acceso a la cámara. Intentá de nuevo y tocá "Permitir".',
+      );
+      return false;
+    }
+    // 'granted' or Samsung workaround — proceed
+    return true;
+  } catch {
+    return true; // Samsung workaround: proceed and let launchCamera handle it
+  }
+}
+
+function promptBatteryOptimization(): void {
+  Alert.alert(
+    'Optimización de batería',
+    'Para que el tracking no se interrumpa en segundo plano, desactivá las restricciones de batería para RastreoYa.\n\n' +
+      'Pasos:\n' +
+      '1. Tocá "Configurar"\n' +
+      '2. Buscá "RastreoYa" en la lista\n' +
+      '3. Seleccioná "Sin restricciones"\n\n' +
+      'En Samsung: Configuración → Batería → Límites de uso en segundo plano → desactivar para RastreoYa',
+    [
+      { text: 'Después', style: 'cancel' },
+      {
+        text: 'Configurar',
+        onPress: () => {
+          Linking.sendIntent('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS').catch(() => {
+            Linking.openSettings().catch(() => {});
+          });
+        },
+      },
+    ],
+  );
+}
+
+// Background task options
+const bgOptions = {
+  taskName: 'RastreoYaTracking',
+  taskTitle: 'RastreoYa - Tracking activo',
+  taskDesc: 'Enviando ubicación en tiempo real',
+  taskIcon: {
+    name: 'ic_launcher',
+    type: 'mipmap',
+  },
+  color: '#16a34a',
+  linkingURI: 'rastreoya://join',
+  progressBar: {
+    max: 100,
+    value: 0,
+    indeterminate: true,
+  },
+  parameters: {
+    delay: 10000,
+  },
+};
+
+// Shared state between component and background task
+let backgroundWatchId: number | null = null;
+let currentDriverId: string | null = null;
+let offlineBuffer: Array<{
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  timestamp: string;
+}> = [];
+let locationCount = 0;
+
+async function flushOfflineBuffer() {
+  if (offlineBuffer.length === 0 || !currentDriverId) return;
+  const batch = [...offlineBuffer];
+  offlineBuffer = [];
+  try {
+    await sendLocations(currentDriverId, batch);
+    console.log('[RastreoYa] Flushed', batch.length, 'offline points');
+  } catch {
+    offlineBuffer = [...batch, ...offlineBuffer];
+  }
+}
+
+// The background task - this runs inside the foreground service
+const backgroundLocationTask = async (taskData?: { delay?: number }) => {
+  const delay = taskData?.delay ?? 10000;
+  console.log('[RastreoYa] Background task started, delay:', delay);
+
+  await new Promise<void>((resolve) => {
+    backgroundWatchId = Geolocation.watchPosition(
+      (pos) => {
+        if (!currentDriverId) return;
+        locationCount++;
+        const point = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy ?? undefined,
+          timestamp: new Date().toISOString(),
+        };
+
+        console.log('[RastreoYa] BG location #' + locationCount + ':', point.latitude.toFixed(5), point.longitude.toFixed(5));
+
+        // Update store
+        try {
+          useTrackingStore.getState().setCurrentLocation(point);
+        } catch {}
+
+        // Send to server
+        sendLocations(currentDriverId!, [point]).catch(() => {
+          offlineBuffer.push(point);
+          if (offlineBuffer.length > 500) {
+            offlineBuffer = offlineBuffer.slice(-500);
+          }
+        });
+      },
+      (err) => {
+        console.warn('[RastreoYa] BG watchPosition error:', err.code, err.message);
+      },
+      {
+        enableHighAccuracy: true,
+        forceLocationManager: true,
+        forceRequestLocation: true,
+        distanceFilter: 5,
+        interval: delay,
+        fastestInterval: 5000,
+        showLocationDialog: false,
+      },
+    );
+
+    console.log('[RastreoYa] watchPosition started, id:', backgroundWatchId);
+
+    const flushInterval = setInterval(flushOfflineBuffer, 30000);
+
+    // Keep alive loop
+    const keepAlive = setInterval(() => {
+      if (!BackgroundService.isRunning()) {
+        console.log('[RastreoYa] Background service stopped, cleaning up');
+        clearInterval(keepAlive);
+        clearInterval(flushInterval);
+        if (backgroundWatchId !== null) {
+          Geolocation.clearWatch(backgroundWatchId);
+          backgroundWatchId = null;
+        }
+        resolve();
+      }
+    }, 2000);
+  });
+};
 
 export function TrackingScreen() {
   const { session, isTracking, currentLocation, offlineQueue, setTracking, setCurrentLocation, addToQueue, clearQueue, logout } =
     useTrackingStore();
   const [uploading, setUploading] = useState(false);
-  const watchIdRef = useRef<number | null>(null);
+  const [bgServiceRunning, setBgServiceRunning] = useState(false);
+  const [batteryPromptShown, setBatteryPromptShown] = useState(false);
+  const appStateRef = useRef(AppState.currentState);
 
   // Sync offline queue on mount
   useEffect(() => {
@@ -36,6 +259,20 @@ export function TrackingScreen() {
         .then(() => clearQueue())
         .catch(() => {});
     }
+    // Check if background service is already running (app was reopened)
+    setBgServiceRunning(BackgroundService.isRunning());
+  }, []);
+
+  // Monitor app state
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (appStateRef.current !== 'active' && nextState === 'active') {
+        flushOfflineBuffer();
+        setBgServiceRunning(BackgroundService.isRunning());
+      }
+      appStateRef.current = nextState;
+    });
+    return () => sub.remove();
   }, []);
 
   const handleLocation = async (coords: { latitude: number; longitude: number; accuracy: number | null }) => {
@@ -54,71 +291,112 @@ export function TrackingScreen() {
     }
   };
 
-  const toggleTracking = async () => {
-    if (isTracking) {
-      if (watchIdRef.current !== null) {
-        Geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
+  const startTracking = async () => {
+    if (!session) return;
+
+    // 1. Request fine location with rationale
+    const locationOk = await requestLocationPermission();
+    if (!locationOk) return;
+
+    // 2. Request background location (Android 10+)
+    await requestBackgroundLocation();
+
+    // 3. Set shared state
+    currentDriverId = session.driverId;
+    offlineBuffer = [];
+    locationCount = 0;
+
+    // 4. Start background service
+    try {
+      await BackgroundService.start(backgroundLocationTask, bgOptions);
+      setTracking(true);
+      setBgServiceRunning(true);
+
+      // 5. Prompt battery optimization once per session
+      if (!batteryPromptShown) {
+        setBatteryPromptShown(true);
+        setTimeout(() => promptBatteryOptimization(), 1500);
       }
-      setTracking(false);
-      return;
+    } catch (err: any) {
+      // Fallback: foreground-only tracking
+      backgroundWatchId = Geolocation.watchPosition(
+        (pos) => handleLocation(pos.coords),
+        () => {},
+        {
+          enableHighAccuracy: true,
+          forceLocationManager: true,
+          forceRequestLocation: true,
+          distanceFilter: 0,
+          interval: 10000,
+          fastestInterval: 5000,
+        },
+      );
+      setTracking(true);
+      promptBatteryOptimization();
     }
+  };
 
-    // Show permission dialog (result is unreliable on Samsung/Android 16, so we ignore it)
-    await ensureLocationPermissionRequested();
+  const stopTracking = async () => {
+    console.log('[RastreoYa] Stopping tracking');
+    try {
+      if (backgroundWatchId !== null) {
+        Geolocation.clearWatch(backgroundWatchId);
+        backgroundWatchId = null;
+      }
+      if (BackgroundService.isRunning()) {
+        await BackgroundService.stop();
+      }
+    } catch (err) {
+      console.warn('[RastreoYa] Error stopping:', err);
+    }
+    currentDriverId = null;
+    setBgServiceRunning(false);
+    if (offlineBuffer.length > 0 && session) {
+      const remaining = [...offlineBuffer];
+      offlineBuffer = [];
+      sendLocations(session.driverId, remaining).catch(() => {
+        remaining.forEach((p) => addToQueue(p));
+      });
+    }
+    setTracking(false);
+  };
 
-    // Use forceLocationManager to bypass Google Play Services FusedLocationProviderClient,
-    // which silently drops location requests on Samsung dual-app profiles.
-    // The native LocationManagerProvider now uses Activity context (patched).
-    Geolocation.getCurrentPosition(
-      (pos) => handleLocation(pos.coords),
-      (err) => console.warn('getCurrentPosition error:', err.code, err.message),
-      { enableHighAccuracy: true, timeout: 30000, maximumAge: 300000, forceLocationManager: true, forceRequestLocation: true },
-    );
-
-    watchIdRef.current = Geolocation.watchPosition(
-      (pos) => handleLocation(pos.coords),
-      (err) => {
-        if (err.code === 1) {
-          Alert.alert(
-            'Permiso requerido',
-            'Necesitás permitir el acceso a la ubicación.\nAndá a Configuración > Aplicaciones > RastreoYa > Permisos > Ubicación.',
-          );
-        } else if (err.code === 2) {
-          Alert.alert('GPS desactivado', 'Activá la ubicación en Configuración > Ubicación.');
-        } else {
-          Alert.alert('Error GPS', `code=${err.code}\n${err.message}`);
-        }
-        if (watchIdRef.current !== null) {
-          Geolocation.clearWatch(watchIdRef.current);
-          watchIdRef.current = null;
-        }
-        setTracking(false);
-      },
-      {
-        enableHighAccuracy: true,
-        forceLocationManager: true,
-        forceRequestLocation: true,
-        distanceFilter: 0,
-        interval: 10000,
-        fastestInterval: 5000,
-      },
-    );
-    setTracking(true);
+  const toggleTracking = () => {
+    if (isTracking) {
+      stopTracking();
+    } else {
+      startTracking();
+    }
   };
 
   const handleTakePhoto = async () => {
     if (!session || !currentLocation) {
-      Alert.alert('Sin ubicación', 'Esperá a tener señal GPS antes de tomar una foto');
+      Alert.alert('Sin ubicación', 'Esperá a tener señal GPS antes de tomar una foto.');
       return;
     }
+
+    // No CAMERA permission in manifest — launchCamera uses ACTION_IMAGE_CAPTURE
+    // intent which opens the system camera app without needing the permission.
     const options: CameraOptions = {
       mediaType: 'photo',
       quality: 0.7,
       saveToPhotos: false,
     };
+
     launchCamera(options, async (response) => {
-      if (response.didCancel || response.errorCode || !response.assets?.[0]?.uri) return;
+      if (response.didCancel) return;
+
+      if (response.errorCode) {
+        Alert.alert('Error', `No se pudo abrir la cámara: ${response.errorMessage || response.errorCode}`);
+        return;
+      }
+
+      const uri = response.assets?.[0]?.uri;
+      if (!uri) {
+        Alert.alert('Error', 'No se obtuvo la imagen. Intentá de nuevo.');
+        return;
+      }
+
       setUploading(true);
       try {
         await uploadPhoto(
@@ -126,11 +404,13 @@ export function TrackingScreen() {
           currentLocation.latitude,
           currentLocation.longitude,
           currentLocation.accuracy ?? null,
-          response.assets[0].uri
+          uri,
         );
-        Alert.alert('✓ Foto enviada', 'La foto fue guardada con tu ubicación actual');
+        Alert.alert('Foto enviada', 'La foto fue guardada con tu ubicación actual.');
       } catch (err: any) {
-        Alert.alert('Error', 'No se pudo enviar la foto. Intentá de nuevo.');
+        const detail = err?.response?.data ? JSON.stringify(err.response.data) : err?.message || 'Error desconocido';
+        console.log('[RastreoYa] Photo upload error:', detail);
+        Alert.alert('Error al enviar', detail);
       } finally {
         setUploading(false);
       }
@@ -143,11 +423,8 @@ export function TrackingScreen() {
       {
         text: 'Salir',
         style: 'destructive',
-        onPress: () => {
-          if (watchIdRef.current !== null) {
-            Geolocation.clearWatch(watchIdRef.current);
-            watchIdRef.current = null;
-          }
+        onPress: async () => {
+          await stopTracking();
           logout();
         },
       },
@@ -159,9 +436,13 @@ export function TrackingScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.campaignName}>{session?.campaignTitle}</Text>
+          <Text style={styles.campaignName}>{session?.campaignTitle} <Text style={{ fontSize: 10, color: '#6b7280' }}>v5</Text></Text>
           <Text style={styles.statusText}>
-            {isTracking ? '🟢 Tracking activo' : '⚫ Tracking pausado'}
+            {isTracking
+              ? bgServiceRunning
+                ? '🟢 Tracking activo (segundo plano)'
+                : '🟡 Tracking activo (solo primer plano)'
+              : '⚫ Tracking pausado'}
           </Text>
         </View>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
@@ -176,13 +457,8 @@ export function TrackingScreen() {
             <Text style={styles.coordText}>
               📍 {currentLocation.latitude.toFixed(5)}, {currentLocation.longitude.toFixed(5)}
             </Text>
-            {currentLocation.accuracy && (
+            {currentLocation.accuracy != null && currentLocation.accuracy > 0 && (
               <Text style={styles.subText}>Precisión: ±{Math.round(currentLocation.accuracy)}m</Text>
-            )}
-            {currentLocation.batteryLevel != null && (
-              <Text style={styles.subText}>
-                Batería: {Math.round(currentLocation.batteryLevel * 100)}%
-              </Text>
             )}
           </>
         ) : (
@@ -192,6 +468,18 @@ export function TrackingScreen() {
           <Text style={styles.queueText}>
             📦 {offlineQueue.length} punto(s) en cola offline
           </Text>
+        )}
+        {isTracking && bgServiceRunning && (
+          <Text style={styles.bgText}>
+            📡 La ubicación se envía aunque minimices la app
+          </Text>
+        )}
+        {isTracking && !bgServiceRunning && (
+          <TouchableOpacity onPress={promptBatteryOptimization}>
+            <Text style={styles.warnText}>
+              ⚠️ Tracking solo en primer plano. Tocá acá para configurar la batería y que funcione en segundo plano.
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -206,15 +494,15 @@ export function TrackingScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.photoBtn, (uploading || !currentLocation) && styles.btnDisabled]}
+        <Pressable
+          style={({ pressed }) => [styles.photoBtn, uploading && styles.btnDisabled, pressed && { opacity: 0.7 }]}
           onPress={handleTakePhoto}
-          disabled={uploading || !currentLocation}
+          disabled={uploading}
         >
           <Text style={styles.photoBtnText}>
             {uploading ? 'Enviando foto...' : '📷 Tomar foto de entrega'}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
@@ -246,6 +534,8 @@ const styles = StyleSheet.create({
   coordText: { color: '#e5e7eb', fontSize: 14, fontFamily: 'monospace' },
   subText: { color: '#6b7280', fontSize: 12, marginTop: 4 },
   queueText: { color: '#f59e0b', fontSize: 12, marginTop: 8 },
+  bgText: { color: '#10b981', fontSize: 12, marginTop: 8 },
+  warnText: { color: '#f59e0b', fontSize: 12, marginTop: 8, textDecorationLine: 'underline' },
   actions: { paddingHorizontal: 20, gap: 12 },
   trackBtn: {
     paddingVertical: 16,

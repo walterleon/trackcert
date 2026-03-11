@@ -636,7 +636,7 @@ export function CampaignDetailPage() {
       {/* Photo modal */}
       {selectedPhoto && (
         <div
-          className="fixed inset-0 z-[2000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setSelectedPhoto(null)}
         >
           <div
