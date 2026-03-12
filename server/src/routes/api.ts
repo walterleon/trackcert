@@ -17,6 +17,7 @@ import { uploadPhoto } from '../controllers/driverController';
 import { getShareData, getShareTrails } from '../controllers/shareController';
 import { getStats, getCompanies, updateCompany, getAllActiveCampaigns } from '../controllers/adminController';
 import { authMiddleware, superAdminMiddleware } from '../middleware/auth';
+import { creditCheckMiddleware } from '../middleware/creditCheck';
 
 const router = Router();
 
@@ -38,10 +39,10 @@ router.get('/auth/me', authMiddleware as any, getMe as any);
 // ─── Campaigns (company auth) ─────────────────────────────────────────────────
 router.get('/campaigns', authMiddleware as any, listCampaigns as any);
 router.post('/campaigns', authMiddleware as any, createCampaign as any);
-router.get('/campaigns/:id', authMiddleware as any, getCampaign as any);
+router.get('/campaigns/:id', authMiddleware as any, creditCheckMiddleware as any, getCampaign as any);
 router.put('/campaigns/:id', authMiddleware as any, updateCampaign as any);
 router.post('/campaigns/:id/share-link', authMiddleware as any, generateShareLink as any);
-router.get('/campaigns/:id/trails', authMiddleware as any, getCampaignTrails as any);
+router.get('/campaigns/:id/trails', authMiddleware as any, creditCheckMiddleware as any, getCampaignTrails as any);
 
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
 router.post('/driver/auth', validateCampaign);

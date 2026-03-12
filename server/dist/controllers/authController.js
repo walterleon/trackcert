@@ -17,7 +17,12 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const db_1 = __importDefault(require("../db"));
 const jwt_1 = require("../utils/jwt");
 function safeCompany(c) {
-    return { id: c.id, name: c.name, email: c.email, role: c.role, planName: c.planName, credits: c.credits };
+    var _a, _b;
+    return {
+        id: c.id, name: c.name, email: c.email, role: c.role,
+        planName: c.planName, credits: c.credits, bonusCredits: c.bonusCredits,
+        nextRenewalDate: (_b = (_a = c.nextRenewalDate) === null || _a === void 0 ? void 0 : _a.toISOString()) !== null && _b !== void 0 ? _b : null,
+    };
 }
 const register = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { name, email, password } = req.body;
@@ -78,7 +83,7 @@ const getMe = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const company = yield db_1.default.company.findUnique({
             where: { id: req.company.companyId },
-            select: { id: true, name: true, email: true, role: true, planName: true, credits: true, createdAt: true },
+            select: { id: true, name: true, email: true, role: true, planName: true, credits: true, bonusCredits: true, nextRenewalDate: true, createdAt: true },
         });
         if (!company) {
             res.status(404).json({ error: 'Company not found' });

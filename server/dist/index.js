@@ -61,6 +61,9 @@ io.on('connection', (socket) => {
         console.log(`[ws] disconnected: ${socket.id}`);
     });
 });
+// ─── Credit cron ──────────────────────────────────────────────────────────────
+const creditCron_1 = require("./cron/creditCron");
+(0, creditCron_1.startCreditCron)().catch((err) => console.error('[credit-cron] Failed to start:', err));
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
     console.log(`RastreoYa API running on port ${PORT}`);

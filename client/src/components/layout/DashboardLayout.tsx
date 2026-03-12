@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, LayoutDashboard, LogOut, Shield } from 'lucide-react';
+import { MapPin, LayoutDashboard, LogOut, Shield, Coins } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 
 interface Props {
@@ -45,6 +45,14 @@ export function DashboardLayout({ children }: Props) {
         </nav>
 
         <div className="flex items-center gap-3">
+          {company?.role !== 'SUPER_ADMIN' && (
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-gray-800 rounded-lg">
+              <Coins className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs font-medium text-amber-400">
+                {(company?.credits ?? 0) + (company?.bonusCredits ?? 0)}
+              </span>
+            </div>
+          )}
           <div className="hidden sm:flex flex-col items-end">
             <span className="text-sm font-medium text-gray-200">{company?.name}</span>
             <span className="text-xs text-gray-500 capitalize">{company?.planName}</span>

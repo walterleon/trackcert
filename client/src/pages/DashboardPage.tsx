@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, MapPin, Users, Camera, ChevronRight, Power, AlertCircle } from 'lucide-react';
+import { Plus, MapPin, Users, Camera, ChevronRight, Power, AlertCircle, Coins } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { apiListCampaigns, apiUpdateCampaign, type Campaign } from '../api/companyApi';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
@@ -8,7 +8,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export function DashboardPage() {
-  const { token } = useAuthStore();
+  const { token, company } = useAuthStore();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -42,8 +42,20 @@ export function DashboardPage() {
     }
   };
 
+  const totalCredits = (company?.credits ?? 0) + (company?.bonusCredits ?? 0);
+  const noCredits = company?.role !== 'SUPER_ADMIN' && totalCredits <= 0;
+
   return (
     <DashboardLayout>
+      {noCredits && (
+        <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 mb-4">
+          <Coins className="w-5 h-5 text-amber-400 flex-shrink-0" />
+          <div>
+            <p className="text-amber-400 text-sm font-medium">Sin créditos disponibles</p>
+            <p className="text-amber-400/70 text-xs">Tus repartidores siguen enviando datos, pero no podés ver el mapa ni los recorridos hasta recargar créditos.</p>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Mis Campañas</h1>

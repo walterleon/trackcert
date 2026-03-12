@@ -7,7 +7,7 @@ import {
   generateShareToken,
   generateSharePin,
 } from '../utils/codes';
-import { getPlanLimits } from '../utils/planLimits';
+import { getPlanLimits } from '../utils/plans';
 
 // ─── Company: list campaigns ──────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@ export const generateShareLink = async (req: AuthRequest, res: Response): Promis
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     const limits = getPlanLimits(company?.planName || 'free');
 
-    if (!limits.canShareLink) {
+    if (!limits.shareLinks) {
       res.status(403).json({
         error: 'Share links require Starter plan or higher. Upgrade to unlock.',
       });

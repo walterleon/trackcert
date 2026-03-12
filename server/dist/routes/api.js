@@ -13,6 +13,7 @@ const driverController_1 = require("../controllers/driverController");
 const shareController_1 = require("../controllers/shareController");
 const adminController_1 = require("../controllers/adminController");
 const auth_1 = require("../middleware/auth");
+const creditCheck_1 = require("../middleware/creditCheck");
 const router = (0, express_1.Router)();
 // Multer: disk storage for photos
 const storage = multer_1.default.diskStorage({
@@ -30,10 +31,10 @@ router.get('/auth/me', auth_1.authMiddleware, authController_1.getMe);
 // ─── Campaigns (company auth) ─────────────────────────────────────────────────
 router.get('/campaigns', auth_1.authMiddleware, campaignController_1.listCampaigns);
 router.post('/campaigns', auth_1.authMiddleware, campaignController_1.createCampaign);
-router.get('/campaigns/:id', auth_1.authMiddleware, campaignController_1.getCampaign);
+router.get('/campaigns/:id', auth_1.authMiddleware, creditCheck_1.creditCheckMiddleware, campaignController_1.getCampaign);
 router.put('/campaigns/:id', auth_1.authMiddleware, campaignController_1.updateCampaign);
 router.post('/campaigns/:id/share-link', auth_1.authMiddleware, campaignController_1.generateShareLink);
-router.get('/campaigns/:id/trails', auth_1.authMiddleware, campaignController_1.getCampaignTrails);
+router.get('/campaigns/:id/trails', auth_1.authMiddleware, creditCheck_1.creditCheckMiddleware, campaignController_1.getCampaignTrails);
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
 router.post('/driver/auth', campaignController_1.validateCampaign);
 router.post('/driver/locations', locationController_1.ingestLocations);

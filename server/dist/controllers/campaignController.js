@@ -15,7 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCampaignStatus = exports.getCampaignTrails = exports.validateCampaign = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
 const db_1 = __importDefault(require("../db"));
 const codes_1 = require("../utils/codes");
-const planLimits_1 = require("../utils/planLimits");
+const plans_1 = require("../utils/plans");
 // ─── Company: list campaigns ──────────────────────────────────────────────────
 const listCampaigns = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const companyId = req.company.companyId;
@@ -44,7 +44,7 @@ const createCampaign = (req, res) => __awaiter(void 0, void 0, void 0, function*
     }
     try {
         const company = yield db_1.default.company.findUnique({ where: { id: companyId } });
-        const limits = (0, planLimits_1.getPlanLimits)((company === null || company === void 0 ? void 0 : company.planName) || 'free');
+        const limits = (0, plans_1.getPlanLimits)((company === null || company === void 0 ? void 0 : company.planName) || 'free');
         const activeCampaigns = yield db_1.default.campaign.count({
             where: { companyId, isActive: true },
         });
@@ -141,8 +141,8 @@ const generateShareLink = (req, res) => __awaiter(void 0, void 0, void 0, functi
     const companyId = req.company.companyId;
     try {
         const company = yield db_1.default.company.findUnique({ where: { id: companyId } });
-        const limits = (0, planLimits_1.getPlanLimits)((company === null || company === void 0 ? void 0 : company.planName) || 'free');
-        if (!limits.canShareLink) {
+        const limits = (0, plans_1.getPlanLimits)((company === null || company === void 0 ? void 0 : company.planName) || 'free');
+        if (!limits.shareLinks) {
             res.status(403).json({
                 error: 'Share links require Starter plan or higher. Upgrade to unlock.',
             });

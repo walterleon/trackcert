@@ -9,20 +9,22 @@ datasource db {
 }
 
 model Company {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  passwordHash String?
-  googleId     String?  @unique
-  role         String   @default("COMPANY") // COMPANY, SUPER_ADMIN
-  credits      Int      @default(0)
-  planName     String   @default("free") // free, starter, growth, pro
-  campaigns    Campaign[]
-  photos       Photo[]
+  id              String    @id @default(uuid())
+  name            String
+  email           String    @unique
+  passwordHash    String?
+  googleId        String?   @unique
+  role            String    @default("COMPANY") // COMPANY, SUPER_ADMIN
+  credits         Int       @default(30)  // monthly credits remaining this cycle
+  bonusCredits    Int       @default(0)   // purchased credits (never expire)
+  planName        String    @default("free") // free, starter, growth, pro
+  nextRenewalDate DateTime? // when monthly credits renew next
+  campaigns       Campaign[]
+  photos          Photo[]
   subscriptions      Subscription[]
   creditTransactions CreditTransaction[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 model Subscription {

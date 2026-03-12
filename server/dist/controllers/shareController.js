@@ -14,6 +14,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getShareData = exports.getShareTrails = void 0;
 const db_1 = __importDefault(require("../db"));
+const creditService_1 = require("../services/creditService");
 const getShareTrails = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { token } = req.params;
     const { pin, since: sinceParam } = req.query;
@@ -22,13 +23,20 @@ const getShareTrails = (req, res) => __awaiter(void 0, void 0, void 0, function*
         return;
     }
     try {
-        const campaign = yield db_1.default.campaign.findUnique({ where: { shareToken: token } });
+        const campaign = yield db_1.default.campaign.findUnique({
+            where: { shareToken: token },
+            include: { company: { select: { credits: true, bonusCredits: true, role: true } } },
+        });
         if (!campaign) {
             res.status(404).json({ error: 'Share link not found or expired' });
             return;
         }
         if (campaign.sharePin !== String(pin)) {
             res.status(401).json({ error: 'Invalid PIN' });
+            return;
+        }
+        if (!(0, creditService_1.hasCredits)(campaign.company)) {
+            res.status(402).json({ error: 'Sin créditos disponibles', code: 'NO_CREDITS' });
             return;
         }
         const since = sinceParam
@@ -69,7 +77,7 @@ const getShareData = (req, res) => __awaiter(void 0, void 0, void 0, function* (
         const campaign = yield db_1.default.campaign.findUnique({
             where: { shareToken: token },
             include: {
-                company: { select: { name: true } },
+                company: { select: { name: true, credits: true, bonusCredits: true, role: true } },
                 drivers: {
                     where: { isActive: true },
                     include: {
@@ -87,6 +95,10 @@ const getShareData = (req, res) => __awaiter(void 0, void 0, void 0, function* (
         }
         if (campaign.sharePin !== String(pin)) {
             res.status(401).json({ error: 'Invalid PIN' });
+            return;
+        }
+        if (!(0, creditService_1.hasCredits)(campaign.company)) {
+            res.status(402).json({ error: 'Sin créditos disponibles', code: 'NO_CREDITS' });
             return;
         }
         res.json({

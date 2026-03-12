@@ -9,7 +9,7 @@ import { io, Socket } from 'socket.io-client';
 import { MapPin, Lock, AlertCircle, Maximize2, Minimize2, EyeOff } from 'lucide-react';
 import { reverseGeocode, streetViewUrl, getTrailArrows, detectStops, formatDuration, stopIcon, type TimedPoint } from '../utils/mapHelpers';
 import MarkerClusterGroup from '../components/MarkerClusterGroup';
-import { apiGetShareData, apiGetShareTrails, type ShareData } from '../api/companyApi';
+import { apiGetShareData, apiGetShareTrails, ApiError, type ShareData } from '../api/companyApi';
 import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -178,7 +178,11 @@ export function TrackingPage() {
         setTrailsWithTime(timed);
       }).catch(() => {});
     } catch (err: any) {
-      setError(err.message || 'PIN incorrecto o link inválido');
+      if (err instanceof ApiError && err.code === 'NO_CREDITS') {
+        setError('El propietario de esta campaña no tiene créditos disponibles. Los datos se siguen recolectando.');
+      } else {
+        setError(err.message || 'PIN incorrecto o link inválido');
+      }
     } finally {
       setLoading(false);
     }

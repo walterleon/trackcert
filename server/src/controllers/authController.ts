@@ -4,8 +4,15 @@ import prisma from '../db';
 import { signToken } from '../utils/jwt';
 import { AuthRequest } from '../middleware/auth';
 
-function safeCompany(c: { id: string; name: string; email: string; role: string; planName: string; credits: number }) {
-  return { id: c.id, name: c.name, email: c.email, role: c.role, planName: c.planName, credits: c.credits };
+function safeCompany(c: {
+  id: string; name: string; email: string; role: string;
+  planName: string; credits: number; bonusCredits: number; nextRenewalDate: Date | null;
+}) {
+  return {
+    id: c.id, name: c.name, email: c.email, role: c.role,
+    planName: c.planName, credits: c.credits, bonusCredits: c.bonusCredits,
+    nextRenewalDate: c.nextRenewalDate?.toISOString() ?? null,
+  };
 }
 
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -74,7 +81,7 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const company = await prisma.company.findUnique({
       where: { id: req.company!.companyId },
-      select: { id: true, name: true, email: true, role: true, planName: true, credits: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, planName: true, credits: true, bonusCredits: true, nextRenewalDate: true, createdAt: true },
     });
     if (!company) {
       res.status(404).json({ error: 'Company not found' });

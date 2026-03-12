@@ -72,6 +72,10 @@ io.on('connection', (socket) => {
   });
 });
 
+// ─── Credit cron ──────────────────────────────────────────────────────────────
+import { startCreditCron } from './cron/creditCron';
+startCreditCron().catch((err) => console.error('[credit-cron] Failed to start:', err));
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`RastreoYa API running on port ${PORT}`);

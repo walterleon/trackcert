@@ -15,6 +15,7 @@ import {
   apiGetCampaignTrails,
   apiGenerateShareLink,
   apiUpdateCampaign,
+  ApiError,
   type CampaignDetail,
   type Driver,
   type Photo,
@@ -181,6 +182,7 @@ export function CampaignDetailPage() {
   const [photos, setPhotos] = useState<(Photo & { driverAlias?: string })[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<(Photo & { driverAlias?: string }) | null>(null);
   const [_tick, setTick] = useState(0);
+  const [noCredits, setNoCredits] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
   // Tick every 30s to re-render "live" vs "offline" status
@@ -221,7 +223,13 @@ export function CampaignDetailPage() {
           setTrailsWithTime(timed);
         }).catch(() => {});
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        if (err instanceof ApiError && err.code === 'NO_CREDITS') {
+          setNoCredits(true);
+        } else {
+          setError(err.message);
+        }
+      })
       .finally(() => setLoading(false));
   }, [token, id]);
 
@@ -346,6 +354,28 @@ export function CampaignDetailPage() {
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-gray-800 rounded w-1/3" />
           <div className="h-96 bg-gray-800 rounded-xl" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (noCredits) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="p-4 bg-amber-500/10 rounded-full mb-4">
+            <svg className="w-10 h-10 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-semibold text-white mb-2">Sin créditos disponibles</h3>
+          <p className="text-gray-400 text-sm max-w-md">
+            Tus repartidores <strong className="text-white">siguen enviando datos</strong> normalmente.
+            Cuando recargues créditos, vas a poder ver todo el recorrido acumulado.
+          </p>
+          <button onClick={() => navigate('/dashboard')} className="mt-6 text-blue-400 hover:text-blue-300 text-sm font-medium">
+            Volver al dashboard
+          </button>
         </div>
       </DashboardLayout>
     );

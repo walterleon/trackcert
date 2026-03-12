@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../db';
+import { hasCredits } from '../services/creditService';
 
 export const getShareTrails = async (req: Request, res: Response): Promise<void> => {
   const { token } = req.params;
@@ -11,13 +12,20 @@ export const getShareTrails = async (req: Request, res: Response): Promise<void>
   }
 
   try {
-    const campaign = await prisma.campaign.findUnique({ where: { shareToken: token } });
+    const campaign = await prisma.campaign.findUnique({
+      where: { shareToken: token },
+      include: { company: { select: { credits: true, bonusCredits: true, role: true } } },
+    });
     if (!campaign) {
       res.status(404).json({ error: 'Share link not found or expired' });
       return;
     }
     if (campaign.sharePin !== String(pin)) {
       res.status(401).json({ error: 'Invalid PIN' });
+      return;
+    }
+    if (!hasCredits(campaign.company)) {
+      res.status(402).json({ error: 'Sin créditos disponibles', code: 'NO_CREDITS' });
       return;
     }
 
@@ -62,7 +70,7 @@ export const getShareData = async (req: Request, res: Response): Promise<void> =
     const campaign = await prisma.campaign.findUnique({
       where: { shareToken: token },
       include: {
-        company: { select: { name: true } },
+        company: { select: { name: true, credits: true, bonusCredits: true, role: true } },
         drivers: {
           where: { isActive: true },
           include: {
@@ -82,6 +90,11 @@ export const getShareData = async (req: Request, res: Response): Promise<void> =
 
     if (campaign.sharePin !== String(pin)) {
       res.status(401).json({ error: 'Invalid PIN' });
+      return;
+    }
+
+    if (!hasCredits(campaign.company)) {
+      res.status(402).json({ error: 'Sin créditos disponibles', code: 'NO_CREDITS' });
       return;
     }
 

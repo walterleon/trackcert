@@ -4,9 +4,19 @@ function authHeaders(token: string) {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 }
 
+export class ApiError extends Error {
+  code?: string;
+  status: number;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function handle<T>(res: Response): Promise<T> {
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!res.ok) throw new ApiError(data.error || 'Request failed', res.status, data.code);
   return data as T;
 }
 
@@ -19,6 +29,8 @@ export interface CompanyInfo {
   role: string;
   planName: string;
   credits: number;
+  bonusCredits: number;
+  nextRenewalDate: string | null;
 }
 
 export async function apiRegister(name: string, email: string, password: string) {
