@@ -8,6 +8,7 @@ import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import { io, Socket } from 'socket.io-client';
 import { reverseGeocode, streetViewUrl, getTrailArrows, detectStops, formatDuration, stopIcon, type TimedPoint } from '../utils/mapHelpers';
+import MarkerClusterGroup from '../components/MarkerClusterGroup';
 import { useAuthStore } from '../store/useAuthStore';
 import {
   apiGetCampaign,
@@ -94,6 +95,19 @@ function MapResizer({ fullscreen }: { fullscreen: boolean }) {
   useEffect(() => {
     setTimeout(() => map.invalidateSize(), 100);
   }, [fullscreen, map]);
+  return null;
+}
+
+function MapPanes() {
+  const map = useMap();
+  useEffect(() => {
+    if (!map.getPane('arrowPane')) {
+      map.createPane('arrowPane').style.zIndex = '450';
+      map.createPane('stopPane').style.zIndex = '620';
+      map.createPane('photoPane').style.zIndex = '640';
+      map.createPane('driverPane').style.zIndex = '660';
+    }
+  }, [map]);
   return null;
 }
 
@@ -564,7 +578,9 @@ export function CampaignDetailPage() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             <MapResizer fullscreen={mapFullscreen} />
+            <MapPanes />
             {livePositions.length > 0 && <FitBounds positions={livePositions} />}
+            {/* Trails + arrows (lowest layer) */}
             {campaign.drivers.map((d, idx) => {
               const driverTrail = trails[d.id];
               if (!driverTrail || driverTrail.length < 2 || hiddenDrivers.has(d.id)) return null;
@@ -576,62 +592,66 @@ export function CampaignDetailPage() {
                   pathOptions={{ color, weight: 4, opacity: 0.85 }}
                 />,
                 ...getTrailArrows(driverTrail, color).map((arrow, ai) => (
-                  <Marker key={`arrow-${d.id}-${ai}`} position={arrow.position} icon={arrow.icon} interactive={false} />
+                  <Marker key={`arrow-${d.id}-${ai}`} position={arrow.position} icon={arrow.icon} interactive={false} pane="arrowPane" />
                 )),
               ];
             })}
+            {/* Driver current position markers (highest layer, NOT clustered) */}
             {visibleLocations.map((loc) => {
               const live = isDriverLive(loc.timestamp);
               const dIdx = campaign.drivers.findIndex((d) => d.id === loc.driverId);
               const color = TRAIL_COLORS[(dIdx === -1 ? 0 : dIdx) % TRAIL_COLORS.length];
               return (
-                <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]} icon={driverIcon(color, live)}>
+                <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]} icon={driverIcon(color, live)} zIndexOffset={600} pane="driverPane">
                   <Popup>
                     <DriverPopupContent alias={loc.alias} lat={loc.latitude} lng={loc.longitude} timestamp={loc.timestamp} live={live} batteryLevel={loc.batteryLevel} />
                   </Popup>
                 </Marker>
               );
             })}
-            {/* Stop markers */}
-            {campaign.drivers.map((d, idx) => {
-              const timedTrail = trailsWithTime[d.id];
-              if (!timedTrail || timedTrail.length < 3 || hiddenDrivers.has(d.id)) return null;
-              const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
-              const stops = detectStops(timedTrail);
-              return stops.map((stop, si) => (
-                <Marker key={`stop-${d.id}-${si}`} position={[stop.lat, stop.lng]} icon={stopIcon(color)}>
+            {/* Clustered: stops + photos (spiderfy when overlapping) */}
+            <MarkerClusterGroup>
+              {/* Stop markers */}
+              {campaign.drivers.map((d, idx) => {
+                const timedTrail = trailsWithTime[d.id];
+                if (!timedTrail || timedTrail.length < 3 || hiddenDrivers.has(d.id)) return null;
+                const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+                const stops = detectStops(timedTrail);
+                return stops.map((stop, si) => (
+                  <Marker key={`stop-${d.id}-${si}`} position={[stop.lat, stop.lng]} icon={stopIcon(color)}>
+                    <Popup>
+                      <StopPopupContent stop={stop} alias={d.alias} />
+                    </Popup>
+                  </Marker>
+                ));
+              })}
+              {/* Photo markers */}
+              {photos.filter((p) => !hiddenDrivers.has(p.driverId)).map((photo) => (
+                <Marker
+                  key={`photo-${photo.id}`}
+                  position={[photo.latitude, photo.longitude]}
+                  icon={CameraIcon}
+                  eventHandlers={{ click: () => setSelectedPhoto(photo) }}
+                >
                   <Popup>
-                    <StopPopupContent stop={stop} alias={d.alias} />
+                    <div className="text-sm">
+                      <strong>{photo.driverAlias}</strong>
+                      <br />
+                      <span className="text-gray-500">{format(new Date(photo.takenAt), "d MMM yyyy HH:mm", { locale: es })}</span>
+                      <br />
+                      <a
+                        href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${photo.latitude},${photo.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#2563eb', fontSize: '12px', textDecoration: 'none' }}
+                      >
+                        Street View
+                      </a>
+                    </div>
                   </Popup>
                 </Marker>
-              ));
-            })}
-            {/* Photo markers */}
-            {photos.filter((p) => !hiddenDrivers.has(p.driverId)).map((photo) => (
-              <Marker
-                key={`photo-${photo.id}`}
-                position={[photo.latitude, photo.longitude]}
-                icon={CameraIcon}
-                eventHandlers={{ click: () => setSelectedPhoto(photo) }}
-              >
-                <Popup>
-                  <div className="text-sm">
-                    <strong>{photo.driverAlias}</strong>
-                    <br />
-                    <span className="text-gray-500">{format(new Date(photo.takenAt), "d MMM yyyy HH:mm", { locale: es })}</span>
-                    <br />
-                    <a
-                      href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${photo.latitude},${photo.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: '#2563eb', fontSize: '12px', textDecoration: 'none' }}
-                    >
-                      Street View
-                    </a>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+              ))}
+            </MarkerClusterGroup>
           </MapContainer>
         </div>
       )}

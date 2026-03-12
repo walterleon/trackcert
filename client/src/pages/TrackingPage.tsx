@@ -8,6 +8,7 @@ import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import { io, Socket } from 'socket.io-client';
 import { MapPin, Lock, AlertCircle, Maximize2, Minimize2, EyeOff } from 'lucide-react';
 import { reverseGeocode, streetViewUrl, getTrailArrows, detectStops, formatDuration, stopIcon, type TimedPoint } from '../utils/mapHelpers';
+import MarkerClusterGroup from '../components/MarkerClusterGroup';
 import { apiGetShareData, apiGetShareTrails, type ShareData } from '../api/companyApi';
 import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -64,6 +65,19 @@ function MapResizer({ fullscreen }: { fullscreen: boolean }) {
   useEffect(() => {
     setTimeout(() => map.invalidateSize(), 100);
   }, [fullscreen, map]);
+  return null;
+}
+
+function MapPanes() {
+  const map = useMap();
+  useEffect(() => {
+    if (!map.getPane('arrowPane')) {
+      map.createPane('arrowPane').style.zIndex = '450';
+      map.createPane('stopPane').style.zIndex = '620';
+      map.createPane('photoPane').style.zIndex = '640';
+      map.createPane('driverPane').style.zIndex = '660';
+    }
+  }, [map]);
   return null;
 }
 
@@ -359,6 +373,8 @@ export function TrackingPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <MapResizer fullscreen={mapFullscreen} />
+          <MapPanes />
+          {/* Trails + arrows (lowest layer) */}
           {shareData.drivers.map((d, idx) => {
             const driverTrail = trails[d.id];
             if (!driverTrail || driverTrail.length < 2 || hiddenDrivers.has(d.id)) return null;
@@ -370,36 +386,39 @@ export function TrackingPage() {
                 pathOptions={{ color, weight: 4, opacity: 0.85 }}
               />,
               ...getTrailArrows(driverTrail, color).map((arrow, ai) => (
-                <Marker key={`arrow-${d.id}-${ai}`} position={arrow.position} icon={arrow.icon} interactive={false} />
+                <Marker key={`arrow-${d.id}-${ai}`} position={arrow.position} icon={arrow.icon} interactive={false} pane="arrowPane" />
               )),
             ];
           })}
-          {/* Stop markers */}
-          {shareData.drivers.map((d, idx) => {
-            const timedTrail = trailsWithTime[d.id];
-            if (!timedTrail || timedTrail.length < 3 || hiddenDrivers.has(d.id)) return null;
-            const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
-            const stops = detectStops(timedTrail);
-            return stops.map((stop, si) => (
-              <Marker key={`stop-${d.id}-${si}`} position={[stop.lat, stop.lng]} icon={stopIcon(color)}>
-                <Popup>
-                  <StopPopupContent stop={stop} alias={d.alias} />
-                </Popup>
-              </Marker>
-            ));
-          })}
+          {/* Driver current position markers (highest layer, NOT clustered) */}
           {visibleLocations.map((loc) => {
             const live = isDriverLive(loc.timestamp);
             const dIdx = shareData.drivers.findIndex((d) => d.id === loc.driverId);
             const color = TRAIL_COLORS[(dIdx === -1 ? 0 : dIdx) % TRAIL_COLORS.length];
             return (
-              <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]} icon={driverIcon(color, live)}>
+              <Marker key={loc.driverId} position={[loc.latitude, loc.longitude]} icon={driverIcon(color, live)} zIndexOffset={600} pane="driverPane">
                 <Popup>
                   <DriverPopupContent alias={loc.alias} lat={loc.latitude} lng={loc.longitude} timestamp={loc.timestamp} live={live} />
                 </Popup>
               </Marker>
             );
           })}
+          {/* Clustered: stops + photos (spiderfy when overlapping) */}
+          <MarkerClusterGroup>
+            {shareData.drivers.map((d, idx) => {
+              const timedTrail = trailsWithTime[d.id];
+              if (!timedTrail || timedTrail.length < 3 || hiddenDrivers.has(d.id)) return null;
+              const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+              const stops = detectStops(timedTrail);
+              return stops.map((stop, si) => (
+                <Marker key={`stop-${d.id}-${si}`} position={[stop.lat, stop.lng]} icon={stopIcon(color)}>
+                  <Popup>
+                    <StopPopupContent stop={stop} alias={d.alias} />
+                  </Popup>
+                </Marker>
+              ));
+            })}
+          </MarkerClusterGroup>
         </MapContainer>
 
         {/* Drivers panel */}
