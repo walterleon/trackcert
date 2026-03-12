@@ -194,6 +194,68 @@ export async function apiDriverAuth(campaignCode: string, validationCode: string
   return handle<{ success: boolean; driverId: string; campaignId: string; campaignTitle: string }>(res);
 }
 
+// ─── Admin (super admin) ────────────────────────────────────────────────────
+
+export interface AdminStats {
+  companies: number;
+  campaigns: number;
+  drivers: number;
+  locations: number;
+  photos: number;
+}
+
+export interface AdminCompany {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  planName: string;
+  credits: number;
+  createdAt: string;
+  _count: { campaigns: number };
+}
+
+export interface AdminCampaign {
+  id: string;
+  title: string;
+  description: string | null;
+  campaignCode: string;
+  isActive: boolean;
+  createdAt: string;
+  company: { name: string };
+  _count: { drivers: number; locations: number };
+}
+
+export async function apiAdminGetStats(token: string): Promise<AdminStats> {
+  const res = await fetch(`${API_BASE}/admin/stats`, { headers: authHeaders(token) });
+  return handle<AdminStats>(res);
+}
+
+export async function apiAdminGetCompanies(token: string): Promise<AdminCompany[]> {
+  const res = await fetch(`${API_BASE}/admin/companies`, { headers: authHeaders(token) });
+  return handle<AdminCompany[]>(res);
+}
+
+export async function apiAdminUpdateCompany(
+  token: string,
+  id: string,
+  data: Partial<{ planName: string; credits: number; role: string }>
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/admin/companies/${id}`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+  return handle<any>(res);
+}
+
+export async function apiAdminGetCampaigns(token: string): Promise<AdminCampaign[]> {
+  const res = await fetch(`${API_BASE}/admin/campaigns`, { headers: authHeaders(token) });
+  return handle<AdminCampaign[]>(res);
+}
+
+// ─── Driver (used from mobile app or web fallback) ────────────────────────────
+
 export async function apiSendLocations(
   driverId: string,
   locations: Array<{

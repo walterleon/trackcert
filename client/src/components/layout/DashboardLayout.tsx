@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, LayoutDashboard, LogOut } from 'lucide-react';
+import { MapPin, LayoutDashboard, LogOut, Shield } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 
 interface Props {
@@ -36,6 +36,12 @@ export function DashboardLayout({ children }: Props) {
             <LayoutDashboard className="w-4 h-4" />
             Campañas
           </NavLink>
+          {company?.role === 'SUPER_ADMIN' && (
+            <NavLink to="/admin" active={isActive('/admin')}>
+              <Shield className="w-4 h-4" />
+              Admin
+            </NavLink>
+          )}
         </nav>
 
         <div className="flex items-center gap-3">

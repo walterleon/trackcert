@@ -7,6 +7,7 @@ import { CampaignFormPage } from './pages/CampaignFormPage';
 import { TrackingPage } from './pages/TrackingPage';
 import { JoinPage } from './pages/JoinPage';
 import { LandingPage } from './pages/LandingPage';
+import { AdminPage } from './pages/AdminPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/campaigns/new" element={<CampaignFormPage />} />
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
 
         {/* Catch-all */}

@@ -19,7 +19,7 @@ export function LoginPage() {
     try {
       const { token, company } = await apiLogin(email, password);
       setAuth(token, company);
-      navigate('/dashboard');
+      navigate(company.role === 'SUPER_ADMIN' ? '/admin' : '/dashboard');
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesión');
     } finally {
