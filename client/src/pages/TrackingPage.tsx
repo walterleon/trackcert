@@ -7,9 +7,9 @@ import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 import { io, Socket } from 'socket.io-client';
 import { MapPin, Lock, AlertCircle, Maximize2, Minimize2, EyeOff } from 'lucide-react';
-import { reverseGeocode, streetViewUrl, getTrailArrows } from '../utils/mapHelpers';
+import { reverseGeocode, streetViewUrl, getTrailArrows, detectStops, formatDuration, stopIcon, type TimedPoint } from '../utils/mapHelpers';
 import { apiGetShareData, apiGetShareTrails, type ShareData } from '../api/companyApi';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
@@ -93,12 +93,35 @@ function DriverPopupContent({ alias, lat, lng, timestamp, live }: {
   );
 }
 
+function StopPopupContent({ stop, alias }: { stop: import('../utils/mapHelpers').DetectedStop; alias: string }) {
+  const [address, setAddress] = useState('Cargando...');
+  useEffect(() => { reverseGeocode(stop.lat, stop.lng).then(setAddress); }, [stop.lat, stop.lng]);
+  return (
+    <div style={{ fontSize: '13px', lineHeight: '1.5', minWidth: 180 }}>
+      <strong>⏱ {formatDuration(stop.durationMs)}</strong>
+      <span style={{ marginLeft: 8, fontSize: 11, color: '#6b7280' }}>{alias}</span>
+      <br />
+      <span style={{ color: '#6b7280', fontSize: 12 }}>
+        {format(new Date(stop.startTime), 'HH:mm', { locale: es })} → {format(new Date(stop.endTime), 'HH:mm', { locale: es })}
+      </span>
+      <br />
+      <span style={{ color: '#374151', fontSize: 12 }}>📍 {address}</span>
+      <br />
+      <a href={streetViewUrl(stop.lat, stop.lng)} target="_blank" rel="noopener noreferrer"
+        style={{ fontSize: 12, color: '#2563eb', textDecoration: 'none' }}>
+        🛣️ Street View
+      </a>
+    </div>
+  );
+}
+
 export function TrackingPage() {
   const { token } = useParams<{ token: string }>();
   const [pinInput, setPinInput] = useState('');
   const [shareData, setShareData] = useState<ShareData | null>(null);
   const [liveLocations, setLiveLocations] = useState<Record<string, LiveLoc>>({});
   const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
+  const [trailsWithTime, setTrailsWithTime] = useState<Record<string, TimedPoint[]>>({});
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [hiddenDrivers, setHiddenDrivers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -132,10 +155,13 @@ export function TrackingPage() {
 
       apiGetShareTrails(token, pinInput).then(({ trails: t }) => {
         const parsed: Record<string, [number, number][]> = {};
+        const timed: Record<string, TimedPoint[]> = {};
         for (const [dId, points] of Object.entries(t)) {
           parsed[dId] = points.map((p) => [p.lat, p.lng]);
+          timed[dId] = points;
         }
         setTrails(parsed);
+        setTrailsWithTime(timed);
       }).catch(() => {});
     } catch (err: any) {
       setError(err.message || 'PIN incorrecto o link inválido');
@@ -160,6 +186,14 @@ export function TrackingPage() {
         if (last && last[0] === data.latitude && last[1] === data.longitude) return prev;
         const newPoint: [number, number] = [data.latitude, data.longitude];
         const updated = [...existing, newPoint];
+        return { ...prev, [data.driverId]: updated.length > 1000 ? updated.slice(-1000) : updated };
+      });
+      setTrailsWithTime((prev) => {
+        const existing = prev[data.driverId] || [];
+        const last = existing[existing.length - 1];
+        if (last && last.lat === data.latitude && last.lng === data.longitude) return prev;
+        const newPt: TimedPoint = { lat: data.latitude, lng: data.longitude, ts: data.timestamp };
+        const updated = [...existing, newPt];
         return { ...prev, [data.driverId]: updated.length > 1000 ? updated.slice(-1000) : updated };
       });
     });
@@ -196,10 +230,13 @@ export function TrackingPage() {
       }).catch(() => {});
       apiGetShareTrails(token, pinRef.current).then(({ trails: t }) => {
         const parsed: Record<string, [number, number][]> = {};
+        const timed: Record<string, TimedPoint[]> = {};
         for (const [dId, points] of Object.entries(t)) {
           parsed[dId] = points.map((p) => [p.lat, p.lng]);
+          timed[dId] = points;
         }
         setTrails(parsed);
+        setTrailsWithTime(timed);
       }).catch(() => {});
     }, 30000);
     return () => clearInterval(interval);
@@ -336,6 +373,20 @@ export function TrackingPage() {
                 <Marker key={`arrow-${d.id}-${ai}`} position={arrow.position} icon={arrow.icon} interactive={false} />
               )),
             ];
+          })}
+          {/* Stop markers */}
+          {shareData.drivers.map((d, idx) => {
+            const timedTrail = trailsWithTime[d.id];
+            if (!timedTrail || timedTrail.length < 3 || hiddenDrivers.has(d.id)) return null;
+            const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+            const stops = detectStops(timedTrail);
+            return stops.map((stop, si) => (
+              <Marker key={`stop-${d.id}-${si}`} position={[stop.lat, stop.lng]} icon={stopIcon(color)}>
+                <Popup>
+                  <StopPopupContent stop={stop} alias={d.alias} />
+                </Popup>
+              </Marker>
+            ));
           })}
           {visibleLocations.map((loc) => {
             const live = isDriverLive(loc.timestamp);
