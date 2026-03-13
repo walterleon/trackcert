@@ -300,18 +300,33 @@ export function TrackingScreen() {
   // Monitor campaign inactive flag from background task
   useEffect(() => {
     const check = setInterval(() => {
-      if (campaignInactive && isTracking) {
+      if (campaignInactive) {
         campaignInactive = false;
-        stopTracking();
+        // Stop tracking if still running (may already be stopped by keepAlive)
+        if (isTracking || bgServiceRunning) {
+          stopTracking();
+        }
         setCampaignPaused(true);
         Alert.alert(
           'Campaña pausada',
           'El administrador pausó esta campaña. El tracking se detuvo.\n\nSi la campaña se reactiva, deberás iniciar el tracking manualmente.',
         );
       }
-    }, 3000);
+    }, 2000);
     return () => clearInterval(check);
-  }, [isTracking]);
+  }, [isTracking, bgServiceRunning]);
+
+  // Periodic campaign status check as backup (every 30s while tracking)
+  useEffect(() => {
+    if (!session || !isTracking) return;
+    const poll = setInterval(async () => {
+      const active = await checkCampaignActive(session.driverId);
+      if (!active) {
+        campaignInactive = true; // will be picked up by the monitor above
+      }
+    }, 30000);
+    return () => clearInterval(poll);
+  }, [session, isTracking]);
 
   // Monitor app state + check campaign status on resume
   useEffect(() => {
@@ -504,7 +519,7 @@ export function TrackingScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.campaignName}>{session?.campaignTitle} <Text style={{ fontSize: 10, color: '#6b7280' }}>v6</Text></Text>
+          <Text style={styles.campaignName}>{session?.campaignTitle} <Text style={{ fontSize: 10, color: '#6b7280' }}>v7</Text></Text>
           <Text style={styles.statusText}>
             {campaignPaused
               ? '🔴 Campaña pausada por el administrador'

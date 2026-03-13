@@ -266,6 +266,12 @@ export function CampaignDetailPage() {
     socket.on('photo-uploaded', (data: { driverId: string; alias: string; photo: Photo }) => {
       setPhotos((prev) => [{ ...data.photo, driverAlias: data.alias }, ...prev]);
     });
+    socket.on('campaign-paused', () => {
+      setCampaign((prev) => prev ? { ...prev, isActive: false } : prev);
+    });
+    socket.on('campaign-resumed', () => {
+      setCampaign((prev) => prev ? { ...prev, isActive: true } : prev);
+    });
     return () => {
       socket.emit('leave-campaign', id);
       socket.disconnect();
