@@ -21,9 +21,16 @@ const ingestLocations = (req, res) => __awaiter(void 0, void 0, void 0, function
         return;
     }
     try {
-        const driver = yield db_1.default.driver.findUnique({ where: { id: driverId } });
+        const driver = yield db_1.default.driver.findUnique({
+            where: { id: driverId },
+            include: { campaign: { select: { isActive: true } } },
+        });
         if (!driver) {
             res.status(401).json({ error: 'Invalid driver ID' });
+            return;
+        }
+        if (!driver.campaign.isActive) {
+            res.status(403).json({ error: 'Campaign is not active', code: 'CAMPAIGN_INACTIVE' });
             return;
         }
         const entries = locations.map((loc) => {

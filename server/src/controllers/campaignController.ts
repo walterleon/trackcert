@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import prisma from '../db';
 import { AuthRequest } from '../middleware/auth';
 import {
@@ -294,6 +296,46 @@ export const getCampaignTrails = async (req: AuthRequest, res: Response): Promis
     res.json({ trails });
   } catch {
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// ─── Company: delete campaign ────────────────────────────────────────────────
+
+export const deleteCampaign = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const companyId = req.company!.companyId;
+
+  try {
+    const campaign = await prisma.campaign.findFirst({ where: { id, companyId } });
+    if (!campaign) {
+      res.status(404).json({ error: 'Campaign not found' });
+      return;
+    }
+
+    // 1. Delete photo files from disk
+    const photos = await prisma.photo.findMany({
+      where: { campaignId: id },
+      select: { filePath: true, fileUrl: true },
+    });
+    for (const photo of photos) {
+      const filePath = photo.filePath || path.join(process.cwd(), 'uploads', path.basename(photo.fileUrl));
+      try {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } catch (fsErr) {
+        console.error('deleteCampaign: failed to remove photo file', filePath, fsErr);
+      }
+    }
+
+    // 2. Delete all related records in correct order (foreign key constraints)
+    await prisma.photo.deleteMany({ where: { campaignId: id } });
+    await prisma.location.deleteMany({ where: { campaignId: id } });
+    await prisma.driver.deleteMany({ where: { campaignId: id } });
+    await prisma.campaign.delete({ where: { id } });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('deleteCampaign error:', error);
+    res.status(500).json({ error: 'Failed to delete campaign' });
   }
 };
 

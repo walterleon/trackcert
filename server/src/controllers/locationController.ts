@@ -10,9 +10,16 @@ export const ingestLocations = async (req: Request, res: Response): Promise<void
   }
 
   try {
-    const driver = await prisma.driver.findUnique({ where: { id: driverId } });
+    const driver = await prisma.driver.findUnique({
+      where: { id: driverId },
+      include: { campaign: { select: { isActive: true } } },
+    });
     if (!driver) {
       res.status(401).json({ error: 'Invalid driver ID' });
+      return;
+    }
+    if (!driver.campaign.isActive) {
+      res.status(403).json({ error: 'Campaign is not active', code: 'CAMPAIGN_INACTIVE' });
       return;
     }
 

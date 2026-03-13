@@ -36,9 +36,23 @@ export async function driverAuth(campaignCode: string, validationCode: string, a
   return data as { success: boolean; driverId: string; campaignId: string; campaignTitle: string };
 }
 
+export class CampaignInactiveError extends Error {
+  constructor() {
+    super('Campaign is not active');
+    this.name = 'CampaignInactiveError';
+  }
+}
+
 export async function sendLocations(driverId: string, locations: LocationPoint[]) {
-  const { data } = await api.post('/driver/locations', { driverId, locations });
-  return data as { success: boolean; count: number };
+  try {
+    const { data } = await api.post('/driver/locations', { driverId, locations });
+    return data as { success: boolean; count: number };
+  } catch (err: any) {
+    if (err?.response?.status === 403 && err?.response?.data?.code === 'CAMPAIGN_INACTIVE') {
+      throw new CampaignInactiveError();
+    }
+    throw err;
+  }
 }
 
 export async function uploadPhoto(

@@ -16,6 +16,7 @@ import {
   apiGenerateShareLink,
   apiDeleteShareLink,
   apiDeletePhoto,
+  apiDeleteCampaign,
   apiUpdateCampaign,
   ApiError,
   type CampaignDetail,
@@ -362,6 +363,19 @@ export function CampaignDetailPage() {
     }
   };
 
+  const handleDeleteCampaign = async () => {
+    if (!token || !id || !campaign) return;
+    const msg = `¿Eliminar "${campaign.title}"?\n\nEsto borrará TODOS los datos:\n- Ubicaciones y recorridos\n- Fotos\n- Repartidores\n\nEsta acción no se puede deshacer.`;
+    if (!confirm(msg)) return;
+    if (!confirm('¿Estás seguro? Se perderán todos los datos de esta campaña.')) return;
+    try {
+      await apiDeleteCampaign(token, id);
+      navigate('/dashboard');
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -459,6 +473,13 @@ export function CampaignDetailPage() {
           >
             <Power className="w-4 h-4" />
             {campaign.isActive ? 'Pausar' : 'Activar'}
+          </button>
+          <button
+            onClick={handleDeleteCampaign}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+            title="Eliminar campaña"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
           <button
             onClick={() => {

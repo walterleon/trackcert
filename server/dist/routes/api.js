@@ -36,6 +36,7 @@ router.get('/campaigns', auth_1.authMiddleware, campaignController_1.listCampaig
 router.post('/campaigns', auth_1.authMiddleware, campaignController_1.createCampaign);
 router.get('/campaigns/:id', auth_1.authMiddleware, creditCheck_1.creditCheckMiddleware, campaignController_1.getCampaign);
 router.put('/campaigns/:id', auth_1.authMiddleware, campaignController_1.updateCampaign);
+router.delete('/campaigns/:id', auth_1.authMiddleware, campaignController_1.deleteCampaign);
 router.post('/campaigns/:id/share-link', auth_1.authMiddleware, campaignController_1.generateShareLink);
 router.delete('/campaigns/:id/share-link', auth_1.authMiddleware, campaignController_1.deleteShareLink);
 router.get('/campaigns/:id/trails', auth_1.authMiddleware, creditCheck_1.creditCheckMiddleware, campaignController_1.getCampaignTrails);

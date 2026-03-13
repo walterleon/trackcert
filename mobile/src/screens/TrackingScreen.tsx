@@ -15,7 +15,7 @@ import {
 import Geolocation from 'react-native-geolocation-service';
 import BackgroundService from 'react-native-background-actions';
 import { launchCamera, CameraOptions } from 'react-native-image-picker';
-import { sendLocations, uploadPhoto } from '../api/client';
+import { sendLocations, uploadPhoto, CampaignInactiveError } from '../api/client';
 import { useTrackingStore } from '../store/useTrackingStore';
 
 // --------------- Permission helpers ---------------
@@ -165,6 +165,7 @@ let offlineBuffer: Array<{
   timestamp: string;
 }> = [];
 let locationCount = 0;
+let campaignInactive = false;
 
 async function flushOfflineBuffer() {
   if (offlineBuffer.length === 0 || !currentDriverId) return;
@@ -203,7 +204,12 @@ const backgroundLocationTask = async (taskData?: { delay?: number }) => {
         } catch {}
 
         // Send to server
-        sendLocations(currentDriverId!, [point]).catch(() => {
+        sendLocations(currentDriverId!, [point]).catch((err) => {
+          if (err instanceof CampaignInactiveError) {
+            campaignInactive = true;
+            console.log('[RastreoYa] Campaign inactive, will stop tracking');
+            return;
+          }
           offlineBuffer.push(point);
           if (offlineBuffer.length > 500) {
             offlineBuffer = offlineBuffer.slice(-500);
@@ -229,7 +235,20 @@ const backgroundLocationTask = async (taskData?: { delay?: number }) => {
     const flushInterval = setInterval(flushOfflineBuffer, 30000);
 
     // Keep alive loop
-    const keepAlive = setInterval(() => {
+    const keepAlive = setInterval(async () => {
+      if (campaignInactive) {
+        console.log('[RastreoYa] Campaign inactive, stopping background service');
+        clearInterval(keepAlive);
+        clearInterval(flushInterval);
+        if (backgroundWatchId !== null) {
+          Geolocation.clearWatch(backgroundWatchId);
+          backgroundWatchId = null;
+        }
+        try { await BackgroundService.stop(); } catch {}
+        useTrackingStore.getState().setTracking(false);
+        resolve();
+        return;
+      }
       if (!BackgroundService.isRunning()) {
         console.log('[RastreoYa] Background service stopped, cleaning up');
         clearInterval(keepAlive);
@@ -263,6 +282,22 @@ export function TrackingScreen() {
     setBgServiceRunning(BackgroundService.isRunning());
   }, []);
 
+  // Monitor campaign inactive flag from background task
+  useEffect(() => {
+    const check = setInterval(() => {
+      if (campaignInactive && isTracking) {
+        campaignInactive = false;
+        setBgServiceRunning(false);
+        setTracking(false);
+        Alert.alert(
+          'Campaña finalizada',
+          'Esta campaña fue desactivada o eliminada. El tracking se detuvo automáticamente.',
+        );
+      }
+    }, 3000);
+    return () => clearInterval(check);
+  }, [isTracking]);
+
   // Monitor app state
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
@@ -286,7 +321,15 @@ export function TrackingScreen() {
     setCurrentLocation(point);
     try {
       await sendLocations(session.driverId, [point]);
-    } catch {
+    } catch (err) {
+      if (err instanceof CampaignInactiveError) {
+        Alert.alert(
+          'Campaña finalizada',
+          'Esta campaña fue desactivada. El tracking se detendrá.',
+          [{ text: 'OK', onPress: () => stopTracking() }],
+        );
+        return;
+      }
       addToQueue(point);
     }
   };
@@ -305,6 +348,7 @@ export function TrackingScreen() {
     currentDriverId = session.driverId;
     offlineBuffer = [];
     locationCount = 0;
+    campaignInactive = false;
 
     // 4. Start background service
     try {

@@ -160,6 +160,17 @@ export async function apiUpdateCampaign(
   return handle<Campaign>(res);
 }
 
+export async function apiDeleteCampaign(
+  token: string,
+  id: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/campaigns/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  return handle<{ success: boolean }>(res);
+}
+
 export async function apiGenerateShareLink(
   token: string,
   campaignId: string

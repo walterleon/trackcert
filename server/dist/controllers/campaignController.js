@@ -12,7 +12,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCampaignStatus = exports.getCampaignTrails = exports.validateCampaign = exports.deleteShareLink = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
+exports.getCampaignStatus = exports.deleteCampaign = exports.getCampaignTrails = exports.validateCampaign = exports.deleteShareLink = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
 const db_1 = __importDefault(require("../db"));
 const codes_1 = require("../utils/codes");
 const plans_1 = require("../utils/plans");
@@ -278,6 +280,44 @@ const getCampaignTrails = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.getCampaignTrails = getCampaignTrails;
+// ─── Company: delete campaign ────────────────────────────────────────────────
+const deleteCampaign = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const companyId = req.company.companyId;
+    try {
+        const campaign = yield db_1.default.campaign.findFirst({ where: { id, companyId } });
+        if (!campaign) {
+            res.status(404).json({ error: 'Campaign not found' });
+            return;
+        }
+        // 1. Delete photo files from disk
+        const photos = yield db_1.default.photo.findMany({
+            where: { campaignId: id },
+            select: { filePath: true, fileUrl: true },
+        });
+        for (const photo of photos) {
+            const filePath = photo.filePath || path_1.default.join(process.cwd(), 'uploads', path_1.default.basename(photo.fileUrl));
+            try {
+                if (fs_1.default.existsSync(filePath))
+                    fs_1.default.unlinkSync(filePath);
+            }
+            catch (fsErr) {
+                console.error('deleteCampaign: failed to remove photo file', filePath, fsErr);
+            }
+        }
+        // 2. Delete all related records in correct order (foreign key constraints)
+        yield db_1.default.photo.deleteMany({ where: { campaignId: id } });
+        yield db_1.default.location.deleteMany({ where: { campaignId: id } });
+        yield db_1.default.driver.deleteMany({ where: { campaignId: id } });
+        yield db_1.default.campaign.delete({ where: { id } });
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('deleteCampaign error:', error);
+        res.status(500).json({ error: 'Failed to delete campaign' });
+    }
+});
+exports.deleteCampaign = deleteCampaign;
 // ─── Legacy: get campaign status (public, by UUID) ────────────────────────────
 const getCampaignStatus = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
