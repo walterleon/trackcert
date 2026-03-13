@@ -147,6 +147,17 @@ export async function apiGenerateShareLink(
   return handle<{ shareUrl: string; sharePin: string; shareToken: string }>(res);
 }
 
+export async function apiDeleteShareLink(
+  token: string,
+  campaignId: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/share-link`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  return handle<{ success: boolean }>(res);
+}
+
 // ─── Trails ──────────────────────────────────────────────────────────────────
 
 export type TrailPoint = { lat: number; lng: number; ts: string };

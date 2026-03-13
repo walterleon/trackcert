@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCampaignStatus = exports.getCampaignTrails = exports.validateCampaign = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
+exports.getCampaignStatus = exports.getCampaignTrails = exports.validateCampaign = exports.deleteShareLink = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
 const db_1 = __importDefault(require("../db"));
 const codes_1 = require("../utils/codes");
 const plans_1 = require("../utils/plans");
@@ -140,23 +140,24 @@ const generateShareLink = (req, res) => __awaiter(void 0, void 0, void 0, functi
     const { id } = req.params;
     const companyId = req.company.companyId;
     try {
-        const company = yield db_1.default.company.findUnique({ where: { id: companyId } });
-        const limits = (0, plans_1.getPlanLimits)((company === null || company === void 0 ? void 0 : company.planName) || 'free');
-        if (!limits.shareLinks) {
-            res.status(403).json({
-                error: 'Share links require Starter plan or higher. Upgrade to unlock.',
-            });
-            return;
-        }
         const campaign = yield db_1.default.campaign.findFirst({ where: { id, companyId } });
         if (!campaign) {
             res.status(404).json({ error: 'Campaign not found' });
             return;
         }
+        const baseUrl = process.env.APP_URL || 'http://localhost:5173';
+        // If share link already exists, return it
+        if (campaign.shareToken && campaign.sharePin) {
+            res.json({
+                shareUrl: `${baseUrl}/track/${campaign.shareToken}`,
+                sharePin: campaign.sharePin,
+                shareToken: campaign.shareToken,
+            });
+            return;
+        }
         const shareToken = (0, codes_1.generateShareToken)();
         const sharePin = (0, codes_1.generateSharePin)();
         yield db_1.default.campaign.update({ where: { id }, data: { shareToken, sharePin } });
-        const baseUrl = process.env.APP_URL || 'http://localhost:5173';
         res.json({
             shareUrl: `${baseUrl}/track/${shareToken}`,
             sharePin,
@@ -168,6 +169,27 @@ const generateShareLink = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.generateShareLink = generateShareLink;
+// ─── Company: delete share link ──────────────────────────────────────────────
+const deleteShareLink = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const companyId = req.company.companyId;
+    try {
+        const campaign = yield db_1.default.campaign.findFirst({ where: { id, companyId } });
+        if (!campaign) {
+            res.status(404).json({ error: 'Campaign not found' });
+            return;
+        }
+        yield db_1.default.campaign.update({
+            where: { id },
+            data: { shareToken: null, sharePin: null },
+        });
+        res.json({ success: true });
+    }
+    catch (_a) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.deleteShareLink = deleteShareLink;
 // ─── Driver: auth with campaignCode + validationCode ─────────────────────────
 const validateCampaign = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { campaignCode, validationCode, alias, deviceId } = req.body;

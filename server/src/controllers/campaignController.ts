@@ -146,19 +146,21 @@ export const generateShareLink = async (req: AuthRequest, res: Response): Promis
   const { id } = req.params;
   const companyId = req.company!.companyId;
   try {
-    const company = await prisma.company.findUnique({ where: { id: companyId } });
-    const limits = getPlanLimits(company?.planName || 'free');
-
-    if (!limits.shareLinks) {
-      res.status(403).json({
-        error: 'Share links require Starter plan or higher. Upgrade to unlock.',
-      });
-      return;
-    }
-
     const campaign = await prisma.campaign.findFirst({ where: { id, companyId } });
     if (!campaign) {
       res.status(404).json({ error: 'Campaign not found' });
+      return;
+    }
+
+    const baseUrl = process.env.APP_URL || 'http://localhost:5173';
+
+    // If share link already exists, return it
+    if (campaign.shareToken && campaign.sharePin) {
+      res.json({
+        shareUrl: `${baseUrl}/track/${campaign.shareToken}`,
+        sharePin: campaign.sharePin,
+        shareToken: campaign.shareToken,
+      });
       return;
     }
 
@@ -167,12 +169,34 @@ export const generateShareLink = async (req: AuthRequest, res: Response): Promis
 
     await prisma.campaign.update({ where: { id }, data: { shareToken, sharePin } });
 
-    const baseUrl = process.env.APP_URL || 'http://localhost:5173';
     res.json({
       shareUrl: `${baseUrl}/track/${shareToken}`,
       sharePin,
       shareToken,
     });
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// ─── Company: delete share link ──────────────────────────────────────────────
+
+export const deleteShareLink = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const companyId = req.company!.companyId;
+  try {
+    const campaign = await prisma.campaign.findFirst({ where: { id, companyId } });
+    if (!campaign) {
+      res.status(404).json({ error: 'Campaign not found' });
+      return;
+    }
+
+    await prisma.campaign.update({
+      where: { id },
+      data: { shareToken: null, sharePin: null },
+    });
+
+    res.json({ success: true });
   } catch {
     res.status(500).json({ error: 'Internal server error' });
   }

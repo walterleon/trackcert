@@ -338,7 +338,7 @@ export function TrackingPage() {
 
   return (
     <div
-      className={`min-h-screen bg-gray-950 flex flex-col`}
+      className={`h-screen bg-gray-950 flex flex-col`}
       style={mapFullscreen ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, background: '#030712' } : undefined}
     >
       {/* Header */}
@@ -426,7 +426,7 @@ export function TrackingPage() {
         </MapContainer>
 
         {/* Drivers panel */}
-        <div className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-72 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-3 shadow-xl">
+        <div className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-72 z-[1000] bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-xl p-3 shadow-xl">
           <p className="text-xs text-gray-500 mb-2 font-medium">
             {liveCount} en vivo · {Object.keys(liveLocations).length} total
           </p>

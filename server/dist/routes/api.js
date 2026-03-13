@@ -34,6 +34,7 @@ router.post('/campaigns', auth_1.authMiddleware, campaignController_1.createCamp
 router.get('/campaigns/:id', auth_1.authMiddleware, creditCheck_1.creditCheckMiddleware, campaignController_1.getCampaign);
 router.put('/campaigns/:id', auth_1.authMiddleware, campaignController_1.updateCampaign);
 router.post('/campaigns/:id/share-link', auth_1.authMiddleware, campaignController_1.generateShareLink);
+router.delete('/campaigns/:id/share-link', auth_1.authMiddleware, campaignController_1.deleteShareLink);
 router.get('/campaigns/:id/trails', auth_1.authMiddleware, creditCheck_1.creditCheckMiddleware, campaignController_1.getCampaignTrails);
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
 router.post('/driver/auth', campaignController_1.validateCampaign);

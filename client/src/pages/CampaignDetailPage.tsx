@@ -14,6 +14,7 @@ import {
   apiGetCampaign,
   apiGetCampaignTrails,
   apiGenerateShareLink,
+  apiDeleteShareLink,
   apiUpdateCampaign,
   ApiError,
   type CampaignDetail,
@@ -173,7 +174,7 @@ export function CampaignDetailPage() {
   const [liveLocations, setLiveLocations] = useState<Record<string, LiveLocation>>({});
   const [shareInfo, setShareInfo] = useState<{ url: string; pin: string } | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | false>(false);
   const [activeTab, setActiveTab] = useState<'map' | 'photos' | 'drivers'>('map');
   const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
   const [trailsWithTime, setTrailsWithTime] = useState<Record<string, TimedPoint[]>>({});
@@ -332,10 +333,22 @@ export function CampaignDetailPage() {
     }
   };
 
-  const handleCopy = async (text: string) => {
+  const handleCopy = async (text: string, field: string = 'default') => {
     await navigator.clipboard.writeText(text);
-    setCopied(true);
+    setCopied(field);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDeleteShareLink = async () => {
+    if (!token || !id) return;
+    if (!confirm('¿Borrar el link de seguimiento? Los que lo tengan ya no podrán acceder.')) return;
+    try {
+      await apiDeleteShareLink(token, id);
+      setShareInfo(null);
+      setCampaign((prev) => prev ? { ...prev, shareToken: null, sharePin: null } : prev);
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   const handleToggleActive = async () => {
@@ -450,13 +463,13 @@ export function CampaignDetailPage() {
             onClick={() => {
               const url = `https://rastreoya.com/join?code=${campaign.campaignCode}&pin=${campaign.validationCode}`;
               navigator.clipboard.writeText(url);
-              setCopied(true);
+              setCopied('drivers');
               setTimeout(() => setCopied(false), 2000);
             }}
             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             <Copy className="w-4 h-4" />
-            {copied ? '¡Copiado!' : 'Link repartidores'}
+            {copied === 'drivers' ? '¡Copiado!' : 'Link repartidores'}
           </button>
           <button
             onClick={handleGenerateShareLink}
@@ -474,29 +487,48 @@ export function CampaignDetailPage() {
         <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mb-4">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-blue-400 font-medium text-sm mb-2">Link de seguimiento generado</p>
+              <p className="text-blue-400 font-medium text-sm mb-2">Link de seguimiento</p>
               <div className="flex items-center gap-2 mb-2">
                 <code className="text-xs bg-gray-950 px-3 py-1.5 rounded text-gray-300 flex-1 truncate">
                   {shareInfo.url}
                 </code>
                 <button
-                  onClick={() => handleCopy(`${shareInfo.url}\nPIN: ${shareInfo.pin}`)}
+                  onClick={() => handleCopy(shareInfo.url, 'share-url')}
                   className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1.5 rounded transition-colors"
                 >
                   <Copy className="w-3 h-3" />
-                  {copied ? '¡Copiado!' : 'Copiar'}
+                  {copied === 'share-url' ? '¡Copiado!' : 'Copiar link'}
                 </button>
               </div>
-              <p className="text-sm text-gray-400">
-                PIN: <span className="font-mono font-bold text-white text-lg tracking-widest">{shareInfo.pin}</span>
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-gray-400">
+                  PIN: <span className="font-mono font-bold text-white text-lg tracking-widest">{shareInfo.pin}</span>
+                </p>
+                <button
+                  onClick={() => handleCopy(shareInfo.pin, 'share-pin')}
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  <Copy className="w-3 h-3" />
+                  {copied === 'share-pin' ? '¡Copiado!' : 'Copiar PIN'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Compartí el link y el PIN por separado.</p>
             </div>
-            <button
-              onClick={() => setShareInfo(null)}
-              className="text-gray-500 hover:text-white ml-4"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex flex-col gap-2 ml-4">
+              <button
+                onClick={() => setShareInfo(null)}
+                className="text-gray-500 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDeleteShareLink}
+                className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                title="Borrar link de seguimiento"
+              >
+                Borrar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -505,20 +537,32 @@ export function CampaignDetailPage() {
       {campaign.shareToken && campaign.sharePin && !shareInfo && (
         <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <Eye className="w-4 h-4 text-gray-400" />
-              <span className="text-sm text-gray-400">Link activo — PIN: </span>
+              <span className="text-sm text-gray-400">Link activo</span>
+              <button
+                onClick={() => handleCopy(`${window.location.origin}/track/${campaign.shareToken}`, 'existing-url')}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                <Copy className="w-3 h-3" />
+                {copied === 'existing-url' ? 'Copiado' : 'Copiar link'}
+              </button>
+              <span className="text-gray-600">·</span>
+              <span className="text-sm text-gray-400">PIN: </span>
               <span className="font-mono font-bold text-white">{campaign.sharePin}</span>
+              <button
+                onClick={() => handleCopy(campaign.sharePin!, 'existing-pin')}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                <Copy className="w-3 h-3" />
+                {copied === 'existing-pin' ? 'Copiado' : 'Copiar PIN'}
+              </button>
             </div>
             <button
-              onClick={() => {
-                const baseUrl = window.location.origin;
-                handleCopy(`${baseUrl}/track/${campaign.shareToken}\nPIN: ${campaign.sharePin}`);
-              }}
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors"
+              onClick={handleDeleteShareLink}
+              className="text-xs text-red-400 hover:text-red-300 transition-colors"
             >
-              <Copy className="w-3 h-3" />
-              {copied ? 'Copiado' : 'Copiar link'}
+              Borrar link
             </button>
           </div>
         </div>

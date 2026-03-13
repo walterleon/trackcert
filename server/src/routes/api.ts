@@ -9,6 +9,7 @@ import {
   getCampaign,
   updateCampaign,
   generateShareLink,
+  deleteShareLink,
   validateCampaign,
   getCampaignTrails,
 } from '../controllers/campaignController';
@@ -42,6 +43,7 @@ router.post('/campaigns', authMiddleware as any, createCampaign as any);
 router.get('/campaigns/:id', authMiddleware as any, creditCheckMiddleware as any, getCampaign as any);
 router.put('/campaigns/:id', authMiddleware as any, updateCampaign as any);
 router.post('/campaigns/:id/share-link', authMiddleware as any, generateShareLink as any);
+router.delete('/campaigns/:id/share-link', authMiddleware as any, deleteShareLink as any);
 router.get('/campaigns/:id/trails', authMiddleware as any, creditCheckMiddleware as any, getCampaignTrails as any);
 
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
