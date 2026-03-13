@@ -136,6 +136,17 @@ export const updateCampaign = async (req: AuthRequest, res: Response): Promise<v
         ...(endDate !== undefined && { endDate: new Date(endDate) }),
       },
     });
+
+    // Notify campaign room via Socket.io when active status changes
+    if (isActive !== undefined && isActive !== campaign.isActive) {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`campaign:${id}`).emit(isActive ? 'campaign-resumed' : 'campaign-paused', {
+          campaignId: id,
+        });
+      }
+    }
+
     res.json(updated);
   } catch {
     res.status(500).json({ error: 'Internal server error' });
@@ -294,6 +305,28 @@ export const getCampaignTrails = async (req: AuthRequest, res: Response): Promis
     }
 
     res.json({ trails });
+  } catch {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// ─── Driver: check campaign status (public) ─────────────────────────────────
+
+export const checkCampaignStatus = async (req: Request, res: Response): Promise<void> => {
+  const { driverId } = req.params;
+  try {
+    const driver = await prisma.driver.findUnique({
+      where: { id: driverId },
+      include: { campaign: { select: { isActive: true, title: true } } },
+    });
+    if (!driver) {
+      res.status(404).json({ error: 'Driver not found' });
+      return;
+    }
+    res.json({
+      campaignActive: driver.campaign.isActive,
+      campaignTitle: driver.campaign.title,
+    });
   } catch {
     res.status(500).json({ error: 'Internal server error' });
   }

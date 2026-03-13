@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCampaignStatus = exports.deleteCampaign = exports.getCampaignTrails = exports.validateCampaign = exports.deleteShareLink = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
+exports.getCampaignStatus = exports.deleteCampaign = exports.checkCampaignStatus = exports.getCampaignTrails = exports.validateCampaign = exports.deleteShareLink = exports.generateShareLink = exports.updateCampaign = exports.getCampaign = exports.createCampaign = exports.listCampaigns = void 0;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const db_1 = __importDefault(require("../db"));
@@ -130,6 +130,15 @@ const updateCampaign = (req, res) => __awaiter(void 0, void 0, void 0, function*
             where: { id },
             data: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, (title !== undefined && { title })), (description !== undefined && { description })), (isActive !== undefined && { isActive })), (startDate !== undefined && { startDate: new Date(startDate) })), (endDate !== undefined && { endDate: new Date(endDate) })),
         });
+        // Notify campaign room via Socket.io when active status changes
+        if (isActive !== undefined && isActive !== campaign.isActive) {
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`campaign:${id}`).emit(isActive ? 'campaign-resumed' : 'campaign-paused', {
+                    campaignId: id,
+                });
+            }
+        }
         res.json(updated);
     }
     catch (_a) {
@@ -280,6 +289,28 @@ const getCampaignTrails = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.getCampaignTrails = getCampaignTrails;
+// ─── Driver: check campaign status (public) ─────────────────────────────────
+const checkCampaignStatus = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { driverId } = req.params;
+    try {
+        const driver = yield db_1.default.driver.findUnique({
+            where: { id: driverId },
+            include: { campaign: { select: { isActive: true, title: true } } },
+        });
+        if (!driver) {
+            res.status(404).json({ error: 'Driver not found' });
+            return;
+        }
+        res.json({
+            campaignActive: driver.campaign.isActive,
+            campaignTitle: driver.campaign.title,
+        });
+    }
+    catch (_a) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+exports.checkCampaignStatus = checkCampaignStatus;
 // ─── Company: delete campaign ────────────────────────────────────────────────
 const deleteCampaign = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;

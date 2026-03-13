@@ -355,6 +355,14 @@ export function CampaignDetailPage() {
 
   const handleToggleActive = async () => {
     if (!token || !campaign || !id) return;
+    if (campaign.isActive) {
+      const msg = '¿Pausar esta campaña?\n\n' +
+        '• Se detendrá el envío de ubicaciones de TODOS los repartidores\n' +
+        '• Nadie nuevo podrá ingresar\n' +
+        '• Los repartidores verán un aviso de campaña pausada\n\n' +
+        'Si reactivás la campaña, cada repartidor deberá iniciar el tracking manualmente de nuevo.';
+      if (!confirm(msg)) return;
+    }
     try {
       await apiUpdateCampaign(token, id, { isActive: !campaign.isActive });
       setCampaign((prev) => prev ? { ...prev, isActive: !prev.isActive } : prev);

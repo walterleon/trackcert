@@ -13,6 +13,7 @@ import {
   deleteShareLink,
   validateCampaign,
   getCampaignTrails,
+  checkCampaignStatus,
 } from '../controllers/campaignController';
 import { ingestLocations } from '../controllers/locationController';
 import { uploadPhoto, deletePhoto } from '../controllers/driverController';
@@ -55,6 +56,7 @@ router.delete('/campaigns/:campaignId/photos/:photoId', authMiddleware as any, d
 
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
 router.post('/driver/auth', validateCampaign);
+router.get('/driver/status/:driverId', checkCampaignStatus);
 router.post('/driver/locations', ingestLocations);
 router.post('/driver/photo', upload.single('photo'), uploadPhoto);
 

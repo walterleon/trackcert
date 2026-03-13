@@ -15,7 +15,7 @@ import {
 import Geolocation from 'react-native-geolocation-service';
 import BackgroundService from 'react-native-background-actions';
 import { launchCamera, CameraOptions } from 'react-native-image-picker';
-import { sendLocations, uploadPhoto, CampaignInactiveError } from '../api/client';
+import { sendLocations, uploadPhoto, isCampaignInactiveError, checkCampaignActive } from '../api/client';
 import { useTrackingStore } from '../store/useTrackingStore';
 
 // --------------- Permission helpers ---------------
@@ -205,7 +205,7 @@ const backgroundLocationTask = async (taskData?: { delay?: number }) => {
 
         // Send to server
         sendLocations(currentDriverId!, [point]).catch((err) => {
-          if (err instanceof CampaignInactiveError) {
+          if (isCampaignInactiveError(err)) {
             campaignInactive = true;
             console.log('[RastreoYa] Campaign inactive, will stop tracking');
             return;
@@ -269,17 +269,32 @@ export function TrackingScreen() {
   const [uploading, setUploading] = useState(false);
   const [bgServiceRunning, setBgServiceRunning] = useState(false);
   const [batteryPromptShown, setBatteryPromptShown] = useState(false);
+  const [campaignPaused, setCampaignPaused] = useState(false);
   const appStateRef = useRef(AppState.currentState);
 
-  // Sync offline queue on mount
+  // Sync offline queue on mount + check campaign status
   useEffect(() => {
     if (offlineQueue.length > 0 && session) {
       sendLocations(session.driverId, offlineQueue)
         .then(() => clearQueue())
-        .catch(() => {});
+        .catch((err) => {
+          if (isCampaignInactiveError(err)) {
+            setCampaignPaused(true);
+            clearQueue();
+          }
+        });
     }
     // Check if background service is already running (app was reopened)
     setBgServiceRunning(BackgroundService.isRunning());
+    // Check campaign status on mount
+    if (session) {
+      checkCampaignActive(session.driverId).then((active) => {
+        if (!active) {
+          setCampaignPaused(true);
+          if (isTracking) stopTracking();
+        }
+      });
+    }
   }, []);
 
   // Monitor campaign inactive flag from background task
@@ -287,28 +302,38 @@ export function TrackingScreen() {
     const check = setInterval(() => {
       if (campaignInactive && isTracking) {
         campaignInactive = false;
-        setBgServiceRunning(false);
-        setTracking(false);
+        stopTracking();
+        setCampaignPaused(true);
         Alert.alert(
-          'Campaña finalizada',
-          'Esta campaña fue desactivada o eliminada. El tracking se detuvo automáticamente.',
+          'Campaña pausada',
+          'El administrador pausó esta campaña. El tracking se detuvo.\n\nSi la campaña se reactiva, deberás iniciar el tracking manualmente.',
         );
       }
     }, 3000);
     return () => clearInterval(check);
   }, [isTracking]);
 
-  // Monitor app state
+  // Monitor app state + check campaign status on resume
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+    const sub = AppState.addEventListener('change', async (nextState: AppStateStatus) => {
       if (appStateRef.current !== 'active' && nextState === 'active') {
         flushOfflineBuffer();
         setBgServiceRunning(BackgroundService.isRunning());
+        // Check if campaign was paused/resumed while app was in background
+        if (session) {
+          const active = await checkCampaignActive(session.driverId);
+          if (!active && isTracking) {
+            campaignInactive = true; // will be picked up by the monitor
+          }
+          if (active && campaignPaused) {
+            setCampaignPaused(false);
+          }
+        }
       }
       appStateRef.current = nextState;
     });
     return () => sub.remove();
-  }, []);
+  }, [session, isTracking, campaignPaused]);
 
   const handleLocation = async (coords: { latitude: number; longitude: number; accuracy: number | null }) => {
     if (!session) return;
@@ -322,12 +347,8 @@ export function TrackingScreen() {
     try {
       await sendLocations(session.driverId, [point]);
     } catch (err) {
-      if (err instanceof CampaignInactiveError) {
-        Alert.alert(
-          'Campaña finalizada',
-          'Esta campaña fue desactivada. El tracking se detendrá.',
-          [{ text: 'OK', onPress: () => stopTracking() }],
-        );
+      if (isCampaignInactiveError(err)) {
+        campaignInactive = true;
         return;
       }
       addToQueue(point);
@@ -349,6 +370,7 @@ export function TrackingScreen() {
     offlineBuffer = [];
     locationCount = 0;
     campaignInactive = false;
+    setCampaignPaused(false);
 
     // 4. Start background service
     try {
@@ -484,7 +506,9 @@ export function TrackingScreen() {
         <View>
           <Text style={styles.campaignName}>{session?.campaignTitle} <Text style={{ fontSize: 10, color: '#6b7280' }}>v6</Text></Text>
           <Text style={styles.statusText}>
-            {isTracking
+            {campaignPaused
+              ? '🔴 Campaña pausada por el administrador'
+              : isTracking
               ? bgServiceRunning
                 ? '🟢 Tracking activo (segundo plano)'
                 : '🟡 Tracking activo (solo primer plano)'
@@ -495,6 +519,19 @@ export function TrackingScreen() {
           <Text style={styles.logoutText}>Salir</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Campaign paused banner */}
+      {campaignPaused && (
+        <View style={styles.pausedBanner}>
+          <Text style={styles.pausedTitle}>⏸ Campaña pausada</Text>
+          <Text style={styles.pausedText}>
+            El administrador pausó esta campaña. No se pueden enviar ubicaciones ni fotos.
+          </Text>
+          <Text style={styles.pausedText}>
+            Cuando se reactive, vas a tener que iniciar el tracking manualmente.
+          </Text>
+        </View>
+      )}
 
       {/* Current location */}
       <View style={styles.locationCard}>
@@ -532,18 +569,19 @@ export function TrackingScreen() {
       {/* Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
-          style={[styles.trackBtn, isTracking ? styles.trackBtnStop : styles.trackBtnStart]}
+          style={[styles.trackBtn, campaignPaused ? styles.btnDisabled : isTracking ? styles.trackBtnStop : styles.trackBtnStart]}
           onPress={toggleTracking}
+          disabled={campaignPaused}
         >
           <Text style={styles.trackBtnText}>
-            {isTracking ? '⏹ Pausar tracking' : '▶ Iniciar tracking'}
+            {campaignPaused ? '⏸ Campaña pausada' : isTracking ? '⏹ Pausar tracking' : '▶ Iniciar tracking'}
           </Text>
         </TouchableOpacity>
 
         <Pressable
-          style={({ pressed }) => [styles.photoBtn, uploading && styles.btnDisabled, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [styles.photoBtn, (uploading || campaignPaused) && styles.btnDisabled, pressed && { opacity: 0.7 }]}
           onPress={handleTakePhoto}
-          disabled={uploading}
+          disabled={uploading || campaignPaused}
         >
           <Text style={styles.photoBtnText}>
             {uploading ? 'Enviando foto...' : '📷 Tomar foto de entrega'}
@@ -582,6 +620,17 @@ const styles = StyleSheet.create({
   queueText: { color: '#f59e0b', fontSize: 12, marginTop: 8 },
   bgText: { color: '#10b981', fontSize: 12, marginTop: 8 },
   warnText: { color: '#f59e0b', fontSize: 12, marginTop: 8, textDecorationLine: 'underline' },
+  pausedBanner: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    backgroundColor: '#7f1d1d',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#dc2626',
+  },
+  pausedTitle: { color: '#fca5a5', fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  pausedText: { color: '#fecaca', fontSize: 13, marginTop: 2 },
   actions: { paddingHorizontal: 20, gap: 12 },
   trackBtn: {
     paddingVertical: 16,

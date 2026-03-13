@@ -43,15 +43,31 @@ export class CampaignInactiveError extends Error {
   }
 }
 
+export function isCampaignInactiveError(err: any): boolean {
+  if (err instanceof CampaignInactiveError) return true;
+  if (err?.name === 'CampaignInactiveError') return true;
+  if (err?.response?.status === 403 && err?.response?.data?.code === 'CAMPAIGN_INACTIVE') return true;
+  return false;
+}
+
 export async function sendLocations(driverId: string, locations: LocationPoint[]) {
   try {
     const { data } = await api.post('/driver/locations', { driverId, locations });
     return data as { success: boolean; count: number };
   } catch (err: any) {
-    if (err?.response?.status === 403 && err?.response?.data?.code === 'CAMPAIGN_INACTIVE') {
+    if (isCampaignInactiveError(err)) {
       throw new CampaignInactiveError();
     }
     throw err;
+  }
+}
+
+export async function checkCampaignActive(driverId: string): Promise<boolean> {
+  try {
+    const { data } = await api.get(`/driver/status/${driverId}`);
+    return data.campaignActive === true;
+  } catch {
+    return true; // assume active on network error to avoid false stops
   }
 }
 

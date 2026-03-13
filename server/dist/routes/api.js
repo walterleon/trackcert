@@ -43,6 +43,7 @@ router.get('/campaigns/:id/trails', auth_1.authMiddleware, creditCheck_1.creditC
 router.delete('/campaigns/:campaignId/photos/:photoId', auth_1.authMiddleware, driverController_1.deletePhoto);
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
 router.post('/driver/auth', campaignController_1.validateCampaign);
+router.get('/driver/status/:driverId', campaignController_1.checkCampaignStatus);
 router.post('/driver/locations', locationController_1.ingestLocations);
 router.post('/driver/photo', upload.single('photo'), driverController_1.uploadPhoto);
 // ─── Share page (public) ──────────────────────────────────────────────────────
