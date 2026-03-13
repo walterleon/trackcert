@@ -13,12 +13,14 @@ import {
 } from 'react-native';
 import { driverAuth } from '../api/client';
 import { useTrackingStore } from '../store/useTrackingStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export function LoginScreen() {
   const [campaignCode, setCampaignCode] = useState('');
   const [validationCode, setValidationCode] = useState('');
   const [alias, setAlias] = useState('');
   const [loading, setLoading] = useState(false);
+  const [debugDeviceId, setDebugDeviceId] = useState('cargando...');
   const setSession = useTrackingStore((s) => s.setSession);
   const pendingJoin = useTrackingStore((s) => s.pendingJoin);
   const setPendingJoin = useTrackingStore((s) => s.setPendingJoin);
@@ -30,6 +32,13 @@ export function LoginScreen() {
       setPendingJoin(null);
     }
   }, [pendingJoin]);
+
+  // DEBUG: show deviceId on screen
+  useEffect(() => {
+    AsyncStorage.getItem('rastreoya-device-id').then(id => {
+      setDebugDeviceId(id || 'NO HAY - se generará al unirse');
+    });
+  }, []);
 
   const handleLogin = async () => {
     if (!campaignCode.trim() || !validationCode.trim() || !alias.trim()) {
@@ -65,6 +74,9 @@ export function LoginScreen() {
         <View style={styles.card}>
           <Text style={styles.title}>RastreoYa</Text>
           <Text style={styles.subtitle}>Ingresá a tu campaña</Text>
+          <Text style={{color: '#f59e0b', fontSize: 10, textAlign: 'center', marginBottom: 8}} selectable>
+            DEBUG deviceId: {debugDeviceId}
+          </Text>
 
           <View style={styles.field}>
             <Text style={styles.label}>Código de campaña</Text>
