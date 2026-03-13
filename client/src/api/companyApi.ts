@@ -223,6 +223,7 @@ export interface AdminCompany {
   role: string;
   planName: string;
   credits: number;
+  bonusCredits: number;
   createdAt: string;
   _count: { campaigns: number };
 }
@@ -251,7 +252,7 @@ export async function apiAdminGetCompanies(token: string): Promise<AdminCompany[
 export async function apiAdminUpdateCompany(
   token: string,
   id: string,
-  data: Partial<{ planName: string; credits: number; role: string }>
+  data: Partial<{ planName: string; credits: number; bonusCredits: number; role: string }>
 ): Promise<any> {
   const res = await fetch(`${API_BASE}/admin/companies/${id}`, {
     method: 'PUT',
@@ -264,6 +265,36 @@ export async function apiAdminUpdateCompany(
 export async function apiAdminGetCampaigns(token: string): Promise<AdminCampaign[]> {
   const res = await fetch(`${API_BASE}/admin/campaigns`, { headers: authHeaders(token) });
   return handle<AdminCampaign[]>(res);
+}
+
+// ─── Admin Config ───────────────────────────────────────────────────────────
+
+export interface ConfigEntry {
+  key: string;
+  value: string;
+  label: string;
+  category: string;
+  type: string;
+  min?: number;
+  max?: number;
+  maxLength?: number;
+}
+
+export async function apiAdminGetConfig(token: string): Promise<ConfigEntry[]> {
+  const res = await fetch(`${API_BASE}/admin/config`, { headers: authHeaders(token) });
+  return handle<ConfigEntry[]>(res);
+}
+
+export async function apiAdminUpdateConfig(
+  token: string,
+  updates: Array<{ key: string; value: string }>
+): Promise<{ success: boolean; updated: number }> {
+  const res = await fetch(`${API_BASE}/admin/config`, {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({ updates }),
+  });
+  return handle<{ success: boolean; updated: number }>(res);
 }
 
 // ─── Driver (used from mobile app or web fallback) ────────────────────────────

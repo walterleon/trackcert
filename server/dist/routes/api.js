@@ -47,4 +47,6 @@ router.get('/admin/stats', auth_1.authMiddleware, auth_1.superAdminMiddleware, a
 router.get('/admin/companies', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.getCompanies);
 router.put('/admin/companies/:id', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.updateCompany);
 router.get('/admin/campaigns', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.getAllActiveCampaigns);
+router.get('/admin/config', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.getSystemConfig);
+router.put('/admin/config', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.updateSystemConfig);
 exports.default = router;

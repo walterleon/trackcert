@@ -61,6 +61,12 @@ io.on('connection', (socket) => {
         console.log(`[ws] disconnected: ${socket.id}`);
     });
 });
+// ─── Seed system config defaults ──────────────────────────────────────────────
+const configService_1 = require("./services/configService");
+(0, configService_1.seedConfigDefaults)()
+    .then((n) => { if (n > 0)
+    console.log(`[config] Seeded ${n} default config values`); })
+    .catch((err) => console.error('[config] Failed to seed defaults:', err));
 // ─── Credit cron ──────────────────────────────────────────────────────────────
 const creditCron_1 = require("./cron/creditCron");
 (0, creditCron_1.startCreditCron)().catch((err) => console.error('[credit-cron] Failed to start:', err));

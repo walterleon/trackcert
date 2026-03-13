@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Shield, Building2, Map, Users, MapPin, Camera, RefreshCw, Save, X,
+  Shield, Building2, Map, Users, MapPin, Camera, RefreshCw, Save, X, Settings, AlertCircle,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
@@ -10,14 +10,33 @@ import {
   apiAdminGetCompanies,
   apiAdminGetCampaigns,
   apiAdminUpdateCompany,
+  apiAdminGetConfig,
+  apiAdminUpdateConfig,
   type AdminStats,
   type AdminCompany,
   type AdminCampaign,
+  type ConfigEntry,
 } from '../api/companyApi';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-const PLANS = ['free', 'starter', 'growth', 'pro'];
+const PLANS = ['gratis', 'pro', 'empresas'];
+
+const PLAN_COLORS: Record<string, string> = {
+  empresas: 'bg-purple-500/10 text-purple-400',
+  pro: 'bg-blue-500/10 text-blue-400',
+  gratis: 'bg-gray-800 text-gray-400',
+};
+
+const CATEGORY_ORDER = ['pricing', 'plan_gratis', 'plan_pro', 'plan_empresas'];
+const CATEGORY_LABELS: Record<string, string> = {
+  pricing: 'Precios y créditos',
+  plan_gratis: 'Plan Gratis',
+  plan_pro: 'Plan Pro',
+  plan_empresas: 'Plan Empresas',
+};
+
+type TabId = 'overview' | 'companies' | 'campaigns' | 'config';
 
 export function AdminPage() {
   const { token, company } = useAuthStore();
@@ -26,13 +45,22 @@ export function AdminPage() {
   const [companies, setCompanies] = useState<AdminCompany[]>([]);
   const [campaigns, setCampaigns] = useState<AdminCampaign[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'companies' | 'campaigns'>('overview');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<{ planName: string; credits: number; role: string }>({ planName: '', credits: 0, role: '' });
+  const [editForm, setEditForm] = useState<{ planName: string; credits: number; bonusCredits: number; role: string }>({
+    planName: '', credits: 0, bonusCredits: 0, role: '',
+  });
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Guard: only SUPER_ADMIN
+  // Config state
+  const [configEntries, setConfigEntries] = useState<ConfigEntry[]>([]);
+  const [configDraft, setConfigDraft] = useState<Record<string, string>>({});
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [configSuccess, setConfigSuccess] = useState('');
+  const [configError, setConfigError] = useState('');
+
   useEffect(() => {
     if (company?.role !== 'SUPER_ADMIN') {
       navigate('/dashboard', { replace: true });
@@ -57,22 +85,45 @@ export function AdminPage() {
     }
   };
 
+  const loadConfig = async () => {
+    if (!token) return;
+    setConfigLoading(true);
+    try {
+      const entries = await apiAdminGetConfig(token);
+      setConfigEntries(entries);
+      const draft: Record<string, string> = {};
+      for (const e of entries) draft[e.key] = e.value;
+      setConfigDraft(draft);
+    } catch (err: any) {
+      console.error('Config load error:', err);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
   useEffect(() => { loadData(); }, [token]);
+  useEffect(() => {
+    if (activeTab === 'config' && configEntries.length === 0) loadConfig();
+  }, [activeTab]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadData();
+    if (activeTab === 'config') await loadConfig();
     setRefreshing(false);
   };
 
   const startEdit = (c: AdminCompany) => {
     setEditingId(c.id);
-    setEditForm({ planName: c.planName, credits: c.credits, role: c.role });
+    setEditForm({
+      planName: c.planName,
+      credits: c.credits,
+      bonusCredits: (c as any).bonusCredits ?? 0,
+      role: c.role,
+    });
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-  };
+  const cancelEdit = () => setEditingId(null);
 
   const saveEdit = async () => {
     if (!token || !editingId) return;
@@ -89,6 +140,65 @@ export function AdminPage() {
       setSaving(false);
     }
   };
+
+  const handleConfigSave = async () => {
+    if (!token) return;
+    setConfigSaving(true);
+    setConfigError('');
+    setConfigSuccess('');
+
+    const updates: Array<{ key: string; value: string }> = [];
+    for (const entry of configEntries) {
+      const newVal = configDraft[entry.key];
+      if (newVal !== entry.value) {
+        updates.push({ key: entry.key, value: newVal });
+      }
+    }
+
+    if (updates.length === 0) {
+      setConfigSuccess('No hay cambios para guardar');
+      setConfigSaving(false);
+      setTimeout(() => setConfigSuccess(''), 3000);
+      return;
+    }
+
+    // Client-side validation
+    for (const { key, value } of updates) {
+      const def = configEntries.find((e) => e.key === key);
+      if (!def) continue;
+      if (def.type === 'number') {
+        const n = Number(value);
+        if (isNaN(n) || !isFinite(n)) {
+          setConfigError(`${def.label}: debe ser un número válido`);
+          setConfigSaving(false);
+          return;
+        }
+        if (def.min !== undefined && n < def.min) {
+          setConfigError(`${def.label}: mínimo ${def.min}`);
+          setConfigSaving(false);
+          return;
+        }
+        if (def.max !== undefined && n > def.max) {
+          setConfigError(`${def.label}: máximo ${def.max}`);
+          setConfigSaving(false);
+          return;
+        }
+      }
+    }
+
+    try {
+      await apiAdminUpdateConfig(token, updates);
+      setConfigSuccess(`${updates.length} valor(es) actualizado(s)`);
+      await loadConfig();
+      setTimeout(() => setConfigSuccess(''), 3000);
+    } catch (err: any) {
+      setConfigError(err.message || 'Error al guardar');
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  const changedCount = configEntries.filter((e) => configDraft[e.key] !== e.value).length;
 
   if (loading) {
     return (
@@ -140,18 +250,22 @@ export function AdminPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b border-gray-800 pb-1">
-        {(['overview', 'companies', 'campaigns'] as const).map((tab) => (
+      <div className="flex gap-1 mb-4 border-b border-gray-800 pb-1 overflow-x-auto">
+        {([
+          { id: 'overview' as TabId, label: 'Resumen' },
+          { id: 'companies' as TabId, label: `Empresas (${companies.length})` },
+          { id: 'campaigns' as TabId, label: `Campañas activas (${campaigns.length})` },
+          { id: 'config' as TabId, label: 'Configuración' },
+        ]).map((tab) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-              activeTab === tab
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-500 hover:text-gray-300'
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
+              activeTab === tab.id ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'
             }`}
           >
-            {tab === 'overview' ? 'Resumen' : tab === 'companies' ? `Empresas (${companies.length})` : `Campañas activas (${campaigns.length})`}
+            {tab.id === 'config' && <Settings className="w-3.5 h-3.5" />}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -159,7 +273,6 @@ export function AdminPage() {
       {/* Overview tab */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Recent companies */}
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <h3 className="text-sm font-semibold text-gray-400 mb-3">Últimas empresas registradas</h3>
             <div className="space-y-2">
@@ -170,7 +283,9 @@ export function AdminPage() {
                     <p className="text-gray-500 text-xs">{c.email}</p>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 capitalize">{c.planName}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${PLAN_COLORS[c.planName] || PLAN_COLORS.gratis}`}>
+                      {c.planName}
+                    </span>
                     <p className="text-gray-600 text-xs mt-0.5">
                       {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
                     </p>
@@ -179,8 +294,6 @@ export function AdminPage() {
               ))}
             </div>
           </div>
-
-          {/* Active campaigns */}
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <h3 className="text-sm font-semibold text-gray-400 mb-3">Campañas activas ahora</h3>
             <div className="space-y-2">
@@ -215,6 +328,7 @@ export function AdminPage() {
                   <th className="text-left px-4 py-3">Email</th>
                   <th className="text-center px-4 py-3">Plan</th>
                   <th className="text-center px-4 py-3">Créditos</th>
+                  <th className="text-center px-4 py-3">Bonus</th>
                   <th className="text-center px-4 py-3">Campañas</th>
                   <th className="text-center px-4 py-3">Rol</th>
                   <th className="text-left px-4 py-3">Registro</th>
@@ -233,41 +347,38 @@ export function AdminPage() {
                           onChange={(e) => setEditForm({ ...editForm, planName: e.target.value })}
                           className="bg-gray-800 border border-gray-700 text-white text-xs rounded px-2 py-1"
                         >
-                          {PLANS.map((p) => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
+                          {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
                         </select>
                       ) : (
-                        <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${
-                          c.planName === 'pro' ? 'bg-purple-500/10 text-purple-400' :
-                          c.planName === 'growth' ? 'bg-blue-500/10 text-blue-400' :
-                          c.planName === 'starter' ? 'bg-emerald-500/10 text-emerald-400' :
-                          'bg-gray-800 text-gray-400'
-                        }`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${PLAN_COLORS[c.planName] || PLAN_COLORS.gratis}`}>
                           {c.planName}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {editingId === c.id ? (
-                        <input
-                          type="number"
-                          value={editForm.credits}
+                        <input type="number" value={editForm.credits} min={0}
                           onChange={(e) => setEditForm({ ...editForm, credits: Number(e.target.value) })}
-                          className="bg-gray-800 border border-gray-700 text-white text-xs rounded px-2 py-1 w-20 text-center"
-                        />
+                          className="bg-gray-800 border border-gray-700 text-white text-xs rounded px-2 py-1 w-20 text-center" />
                       ) : (
                         <span className="text-gray-300 font-mono">{c.credits}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {editingId === c.id ? (
+                        <input type="number" value={editForm.bonusCredits} min={0}
+                          onChange={(e) => setEditForm({ ...editForm, bonusCredits: Number(e.target.value) })}
+                          className="bg-gray-800 border border-gray-700 text-white text-xs rounded px-2 py-1 w-20 text-center" />
+                      ) : (
+                        <span className="text-amber-400 font-mono">{(c as any).bonusCredits ?? 0}</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center text-gray-300">{c._count.campaigns}</td>
                     <td className="px-4 py-3 text-center">
                       {editingId === c.id ? (
-                        <select
-                          value={editForm.role}
+                        <select value={editForm.role}
                           onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                          className="bg-gray-800 border border-gray-700 text-white text-xs rounded px-2 py-1"
-                        >
+                          className="bg-gray-800 border border-gray-700 text-white text-xs rounded px-2 py-1">
                           <option value="COMPANY">COMPANY</option>
                           <option value="SUPER_ADMIN">SUPER_ADMIN</option>
                         </select>
@@ -283,29 +394,15 @@ export function AdminPage() {
                     <td className="px-4 py-3 text-center">
                       {editingId === c.id ? (
                         <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={saveEdit}
-                            disabled={saving}
-                            className="p-1 text-emerald-400 hover:bg-emerald-400/10 rounded transition-colors disabled:opacity-50"
-                            title="Guardar"
-                          >
+                          <button onClick={saveEdit} disabled={saving} className="p-1 text-emerald-400 hover:bg-emerald-400/10 rounded transition-colors disabled:opacity-50" title="Guardar">
                             <Save className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={cancelEdit}
-                            className="p-1 text-gray-500 hover:bg-gray-700 rounded transition-colors"
-                            title="Cancelar"
-                          >
+                          <button onClick={cancelEdit} className="p-1 text-gray-500 hover:bg-gray-700 rounded transition-colors" title="Cancelar">
                             <X className="w-4 h-4" />
                           </button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => startEdit(c)}
-                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                        >
-                          Editar
-                        </button>
+                        <button onClick={() => startEdit(c)} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">Editar</button>
                       )}
                     </td>
                   </tr>
@@ -336,9 +433,7 @@ export function AdminPage() {
                   <tr key={cam.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
                     <td className="px-4 py-3">
                       <p className="text-white font-medium">{cam.title}</p>
-                      {cam.description && (
-                        <p className="text-gray-500 text-xs truncate max-w-xs">{cam.description}</p>
-                      )}
+                      {cam.description && <p className="text-gray-500 text-xs truncate max-w-xs">{cam.description}</p>}
                     </td>
                     <td className="px-4 py-3 text-gray-400">{cam.company.name}</td>
                     <td className="px-4 py-3">
@@ -352,13 +447,92 @@ export function AdminPage() {
                   </tr>
                 ))}
                 {campaigns.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="text-center text-gray-600 py-8">Sin campañas activas</td>
-                  </tr>
+                  <tr><td colSpan={6} className="text-center text-gray-600 py-8">Sin campañas activas</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Config tab */}
+      {activeTab === 'config' && (
+        <div className="space-y-4">
+          {configError && (
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {configError}
+            </div>
+          )}
+          {configSuccess && (
+            <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-3 text-emerald-400 text-sm">
+              <Save className="w-4 h-4 flex-shrink-0" />
+              {configSuccess}
+            </div>
+          )}
+
+          {configLoading ? (
+            <div className="animate-pulse space-y-4">
+              {[1, 2, 3].map((i) => <div key={i} className="h-40 bg-gray-800 rounded-xl" />)}
+            </div>
+          ) : (
+            <>
+              {CATEGORY_ORDER.map((cat) => {
+                const entries = configEntries.filter((e) => e.category === cat);
+                if (entries.length === 0) return null;
+                return (
+                  <div key={cat} className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-gray-300 mb-4 uppercase tracking-wide">
+                      {CATEGORY_LABELS[cat] || cat}
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {entries.map((entry) => (
+                        <div key={entry.key}>
+                          <label className="block text-xs text-gray-500 mb-1">{entry.label}</label>
+                          <input
+                            type={entry.type === 'number' ? 'number' : 'text'}
+                            value={configDraft[entry.key] ?? entry.value}
+                            onChange={(e) => setConfigDraft({ ...configDraft, [entry.key]: e.target.value })}
+                            min={entry.min}
+                            max={entry.max}
+                            maxLength={entry.maxLength}
+                            step={entry.type === 'number' && entry.key.includes('usd') ? '0.01' : undefined}
+                            className={`w-full bg-gray-800 border text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 transition-colors ${
+                              configDraft[entry.key] !== entry.value
+                                ? 'border-amber-500/50 focus:ring-amber-500'
+                                : 'border-gray-700 focus:ring-blue-500'
+                            }`}
+                          />
+                          {entry.min !== undefined && entry.max !== undefined && (
+                            <p className="text-[10px] text-gray-600 mt-0.5">
+                              {entry.min === -1 ? '-1 (ilimitado)' : entry.min} — {entry.max.toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-xl px-5 py-4">
+                <p className="text-sm text-gray-400">
+                  {changedCount > 0
+                    ? <span className="text-amber-400 font-medium">{changedCount} cambio(s) sin guardar</span>
+                    : 'Sin cambios pendientes'
+                  }
+                </p>
+                <button
+                  onClick={handleConfigSave}
+                  disabled={configSaving || changedCount === 0}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-5 py-2 rounded-lg font-medium text-sm transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  {configSaving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </DashboardLayout>

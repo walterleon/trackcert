@@ -72,6 +72,12 @@ io.on('connection', (socket) => {
   });
 });
 
+// ─── Seed system config defaults ──────────────────────────────────────────────
+import { seedConfigDefaults } from './services/configService';
+seedConfigDefaults()
+  .then((n) => { if (n > 0) console.log(`[config] Seeded ${n} default config values`); })
+  .catch((err) => console.error('[config] Failed to seed defaults:', err));
+
 // ─── Credit cron ──────────────────────────────────────────────────────────────
 import { startCreditCron } from './cron/creditCron';
 startCreditCron().catch((err) => console.error('[credit-cron] Failed to start:', err));

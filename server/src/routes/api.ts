@@ -15,7 +15,7 @@ import {
 import { ingestLocations } from '../controllers/locationController';
 import { uploadPhoto } from '../controllers/driverController';
 import { getShareData, getShareTrails } from '../controllers/shareController';
-import { getStats, getCompanies, updateCompany, getAllActiveCampaigns } from '../controllers/adminController';
+import { getStats, getCompanies, updateCompany, getAllActiveCampaigns, getSystemConfig, updateSystemConfig } from '../controllers/adminController';
 import { authMiddleware, superAdminMiddleware } from '../middleware/auth';
 import { creditCheckMiddleware } from '../middleware/creditCheck';
 
@@ -58,5 +58,7 @@ router.get('/admin/stats', authMiddleware as any, superAdminMiddleware as any, g
 router.get('/admin/companies', authMiddleware as any, superAdminMiddleware as any, getCompanies as any);
 router.put('/admin/companies/:id', authMiddleware as any, superAdminMiddleware as any, updateCompany as any);
 router.get('/admin/campaigns', authMiddleware as any, superAdminMiddleware as any, getAllActiveCampaigns as any);
+router.get('/admin/config', authMiddleware as any, superAdminMiddleware as any, getSystemConfig as any);
+router.put('/admin/config', authMiddleware as any, superAdminMiddleware as any, updateSystemConfig as any);
 
 export default router;
