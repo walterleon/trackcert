@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Share2, Copy, Eye, Camera, Users, Power, X, Maximize2, Minimize2, EyeOff } from 'lucide-react';
+import { ArrowLeft, Share2, Copy, Eye, Camera, Users, Power, X, Maximize2, Minimize2, EyeOff, Trash2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -15,6 +15,7 @@ import {
   apiGetCampaignTrails,
   apiGenerateShareLink,
   apiDeleteShareLink,
+  apiDeletePhoto,
   apiUpdateCampaign,
   ApiError,
   type CampaignDetail,
@@ -836,6 +837,22 @@ export function CampaignDetailPage() {
                 </a>
                 <span>ID: {selectedPhoto.id.slice(0, 8)}</span>
               </div>
+              <button
+                onClick={async () => {
+                  if (!confirm('¿Eliminar esta foto? Esta accion no se puede deshacer.')) return;
+                  try {
+                    await apiDeletePhoto(token!, campaign!.id, selectedPhoto.id);
+                    setPhotos((prev) => prev.filter((p) => p.id !== selectedPhoto.id));
+                    setSelectedPhoto(null);
+                  } catch {
+                    alert('Error al eliminar la foto');
+                  }
+                }}
+                className="mt-3 flex items-center gap-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Eliminar foto
+              </button>
             </div>
           </div>
         </div>

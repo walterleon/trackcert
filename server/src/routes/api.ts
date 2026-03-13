@@ -14,7 +14,7 @@ import {
   getCampaignTrails,
 } from '../controllers/campaignController';
 import { ingestLocations } from '../controllers/locationController';
-import { uploadPhoto } from '../controllers/driverController';
+import { uploadPhoto, deletePhoto } from '../controllers/driverController';
 import { getShareData, getShareTrails } from '../controllers/shareController';
 import { getPlans } from '../controllers/plansController';
 import { getStats, getCompanies, updateCompany, getAllActiveCampaigns, getSystemConfig, updateSystemConfig } from '../controllers/adminController';
@@ -49,6 +49,7 @@ router.put('/campaigns/:id', authMiddleware as any, updateCampaign as any);
 router.post('/campaigns/:id/share-link', authMiddleware as any, generateShareLink as any);
 router.delete('/campaigns/:id/share-link', authMiddleware as any, deleteShareLink as any);
 router.get('/campaigns/:id/trails', authMiddleware as any, creditCheckMiddleware as any, getCampaignTrails as any);
+router.delete('/campaigns/:campaignId/photos/:photoId', authMiddleware as any, deletePhoto as any);
 
 // ─── Driver (public – driver auth by ID) ─────────────────────────────────────
 router.post('/driver/auth', validateCampaign);

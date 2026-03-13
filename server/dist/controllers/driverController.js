@@ -12,7 +12,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.uploadPhoto = void 0;
+exports.deletePhoto = exports.uploadPhoto = void 0;
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
 const db_1 = __importDefault(require("../db"));
 const uploadPhoto = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { driverId, latitude, longitude, accuracy } = req.body;
@@ -69,3 +71,35 @@ const uploadPhoto = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
     }
 });
 exports.uploadPhoto = uploadPhoto;
+// ─── Company: delete photo ──────────────────────────────────────────────────
+const deletePhoto = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { campaignId, photoId } = req.params;
+    const companyId = req.company.companyId;
+    try {
+        const photo = yield db_1.default.photo.findFirst({
+            where: { id: photoId, campaignId, companyId },
+        });
+        if (!photo) {
+            res.status(404).json({ error: 'Photo not found' });
+            return;
+        }
+        // Delete file from disk
+        const filePath = photo.filePath || path_1.default.join(process.cwd(), 'uploads', path_1.default.basename(photo.fileUrl));
+        try {
+            if (fs_1.default.existsSync(filePath)) {
+                fs_1.default.unlinkSync(filePath);
+            }
+        }
+        catch (fsErr) {
+            console.error('deletePhoto: failed to remove file', filePath, fsErr);
+        }
+        // Delete from database
+        yield db_1.default.photo.delete({ where: { id: photoId } });
+        res.json({ success: true });
+    }
+    catch (error) {
+        console.error('deletePhoto error:', error);
+        res.status(500).json({ error: 'Failed to delete photo' });
+    }
+});
+exports.deletePhoto = deletePhoto;

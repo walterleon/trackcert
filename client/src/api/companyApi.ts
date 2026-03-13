@@ -182,6 +182,20 @@ export async function apiDeleteShareLink(
   return handle<{ success: boolean }>(res);
 }
 
+// ─── Photos ─────────────────────────────────────────────────────────────────
+
+export async function apiDeletePhoto(
+  token: string,
+  campaignId: string,
+  photoId: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/photos/${photoId}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+  return handle<{ success: boolean }>(res);
+}
+
 // ─── Trails ──────────────────────────────────────────────────────────────────
 
 export type TrailPoint = { lat: number; lng: number; ts: string };
