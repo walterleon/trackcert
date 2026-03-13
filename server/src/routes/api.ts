@@ -16,6 +16,7 @@ import {
 import { ingestLocations } from '../controllers/locationController';
 import { uploadPhoto } from '../controllers/driverController';
 import { getShareData, getShareTrails } from '../controllers/shareController';
+import { getPlans } from '../controllers/plansController';
 import { getStats, getCompanies, updateCompany, getAllActiveCampaigns, getSystemConfig, updateSystemConfig } from '../controllers/adminController';
 import { authMiddleware, superAdminMiddleware } from '../middleware/auth';
 import { creditCheckMiddleware } from '../middleware/creditCheck';
@@ -31,6 +32,9 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+
+// ─── Plans (public) ──────────────────────────────────────────────────────────
+router.get('/plans', getPlans);
 
 // ─── Auth (public) ────────────────────────────────────────────────────────────
 router.post('/auth/register', register);

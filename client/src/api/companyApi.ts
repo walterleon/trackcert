@@ -20,6 +20,30 @@ async function handle<T>(res: Response): Promise<T> {
   return data as T;
 }
 
+// ─── Plans (public) ─────────────────────────────────────────────────────────
+
+export interface PlanInfo {
+  name: string;
+  monthlyCredits: number;
+  maxCampaigns: number;
+  trailHours: number;
+  maxPhotos: number;
+  priceArs: number;
+  priceUsd: number;
+}
+
+export interface PlansResponse {
+  plans: PlanInfo[];
+  creditPriceArs: number;
+  creditPriceUsd: number;
+  creditPackSize: number;
+}
+
+export async function apiGetPlans(): Promise<PlansResponse> {
+  const res = await fetch(`${API_BASE}/plans`);
+  return handle<PlansResponse>(res);
+}
+
 // ─── Auth ──────────────────────────────────────────────────────────────────────
 
 export interface CompanyInfo {

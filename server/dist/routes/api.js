@@ -11,6 +11,7 @@ const campaignController_1 = require("../controllers/campaignController");
 const locationController_1 = require("../controllers/locationController");
 const driverController_1 = require("../controllers/driverController");
 const shareController_1 = require("../controllers/shareController");
+const plansController_1 = require("../controllers/plansController");
 const adminController_1 = require("../controllers/adminController");
 const auth_1 = require("../middleware/auth");
 const creditCheck_1 = require("../middleware/creditCheck");
@@ -24,6 +25,8 @@ const storage = multer_1.default.diskStorage({
     },
 });
 const upload = (0, multer_1.default)({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+// ─── Plans (public) ──────────────────────────────────────────────────────────
+router.get('/plans', plansController_1.getPlans);
 // ─── Auth (public) ────────────────────────────────────────────────────────────
 router.post('/auth/register', authController_1.register);
 router.post('/auth/login', authController_1.login);
