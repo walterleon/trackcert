@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   Platform,
+  StatusBar,
   PermissionsAndroid,
   AppState,
   AppStateStatus,
@@ -17,6 +18,8 @@ import BackgroundService from 'react-native-background-actions';
 import { launchCamera, CameraOptions } from 'react-native-image-picker';
 import { sendLocations, uploadPhoto, isCampaignInactiveError, checkCampaignActive } from '../api/client';
 import { useTrackingStore } from '../store/useTrackingStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MiniMap } from '../components/MiniMap';
 
 // --------------- Permission helpers ---------------
 
@@ -271,6 +274,7 @@ export function TrackingScreen() {
   const [batteryPromptShown, setBatteryPromptShown] = useState(false);
   const [campaignPaused, setCampaignPaused] = useState(false);
   const appStateRef = useRef(AppState.currentState);
+  const insets = useSafeAreaInsets();
 
   // Sync offline queue on mount + check campaign status
   useEffect(() => {
@@ -515,11 +519,12 @@ export function TrackingScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top || ((StatusBar.currentHeight ?? 0) + 8), paddingBottom: insets.bottom || 24 }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.campaignName}>{session?.campaignTitle} <Text style={{ fontSize: 10, color: '#6b7280' }}>v7</Text></Text>
+          <Text style={styles.campaignName}>{session?.campaignTitle}</Text>
           <Text style={styles.statusText}>
             {campaignPaused
               ? '🔴 Campaña pausada por el administrador'
@@ -548,67 +553,74 @@ export function TrackingScreen() {
         </View>
       )}
 
-      {/* Current location */}
-      <View style={styles.locationCard}>
+      {/* Map */}
+      <View style={styles.mapContainer}>
         {currentLocation ? (
-          <>
-            <Text style={styles.coordText}>
-              📍 {currentLocation.latitude.toFixed(5)}, {currentLocation.longitude.toFixed(5)}
-            </Text>
-            {currentLocation.accuracy != null && currentLocation.accuracy > 0 && (
-              <Text style={styles.subText}>Precisión: ±{Math.round(currentLocation.accuracy)}m</Text>
-            )}
-          </>
+          <MiniMap
+            latitude={currentLocation.latitude}
+            longitude={currentLocation.longitude}
+            accuracy={currentLocation.accuracy}
+          />
         ) : (
-          <Text style={styles.subText}>Obteniendo ubicación GPS...</Text>
+          <View style={styles.mapPlaceholder}>
+            <Text style={styles.mapPlaceholderText}>Obteniendo ubicación GPS...</Text>
+          </View>
         )}
-        {offlineQueue.length > 0 && (
-          <Text style={styles.queueText}>
-            📦 {offlineQueue.length} punto(s) en cola offline
+      </View>
+
+      {/* Location info bar */}
+      <View style={styles.locationBar}>
+        {currentLocation ? (
+          <Text style={styles.coordText}>
+            📍 {currentLocation.latitude.toFixed(5)}, {currentLocation.longitude.toFixed(5)}
+            {currentLocation.accuracy != null && currentLocation.accuracy > 0
+              ? `  ±${Math.round(currentLocation.accuracy)}m`
+              : ''}
           </Text>
+        ) : null}
+        {offlineQueue.length > 0 && (
+          <Text style={styles.queueText}>📦 {offlineQueue.length} en cola offline</Text>
         )}
         {isTracking && bgServiceRunning && (
-          <Text style={styles.bgText}>
-            📡 La ubicación se envía aunque minimices la app
-          </Text>
+          <Text style={styles.bgText}>📡 Enviando en segundo plano</Text>
         )}
         {isTracking && !bgServiceRunning && (
           <TouchableOpacity onPress={promptBatteryOptimization}>
-            <Text style={styles.warnText}>
-              ⚠️ Tracking solo en primer plano. Tocá acá para configurar la batería y que funcione en segundo plano.
-            </Text>
+            <Text style={styles.warnText}>⚠️ Solo primer plano — tocá para configurar</Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* Actions */}
       <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.trackBtn, campaignPaused ? styles.btnDisabled : isTracking ? styles.trackBtnStop : styles.trackBtnStart]}
-          onPress={toggleTracking}
-          disabled={campaignPaused}
-        >
-          <Text style={styles.trackBtnText}>
-            {campaignPaused ? '⏸ Campaña pausada' : isTracking ? '⏹ Pausar tracking' : '▶ Iniciar tracking'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.trackBtn, campaignPaused ? styles.btnDisabled : isTracking ? styles.trackBtnStop : styles.trackBtnStart]}
+            onPress={toggleTracking}
+            disabled={campaignPaused}
+          >
+            <Text style={styles.trackBtnText}>
+              {campaignPaused ? '⏸ Pausada' : isTracking ? '⏹ Pausar' : '▶ Iniciar'}
+            </Text>
+          </TouchableOpacity>
 
-        <Pressable
-          style={({ pressed }) => [styles.photoBtn, (uploading || campaignPaused) && styles.btnDisabled, pressed && { opacity: 0.7 }]}
-          onPress={handleTakePhoto}
-          disabled={uploading || campaignPaused}
-        >
-          <Text style={styles.photoBtnText}>
-            {uploading ? 'Enviando foto...' : '📷 Tomar foto de entrega'}
-          </Text>
-        </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.photoBtn, (uploading || campaignPaused) && styles.btnDisabled, pressed && { opacity: 0.7 }]}
+            onPress={handleTakePhoto}
+            disabled={uploading || campaignPaused}
+          >
+            <Text style={styles.photoBtnText}>
+              {uploading ? 'Enviando...' : '📷 Foto'}
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#030712', paddingTop: Platform.OS === 'android' ? 32 : 52 },
+  container: { flex: 1, backgroundColor: '#030712' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -622,19 +634,36 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 13, color: '#9ca3af', marginTop: 2 },
   logoutBtn: { paddingVertical: 6, paddingHorizontal: 12 },
   logoutText: { color: '#ef4444', fontSize: 14, fontWeight: '600' },
-  locationCard: {
-    margin: 20,
-    backgroundColor: '#111827',
+  mapContainer: {
+    flex: 1,
+    marginHorizontal: 16,
+    marginTop: 12,
     borderRadius: 16,
-    padding: 16,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#1f2937',
   },
-  coordText: { color: '#e5e7eb', fontSize: 14, fontFamily: 'monospace' },
-  subText: { color: '#6b7280', fontSize: 12, marginTop: 4 },
-  queueText: { color: '#f59e0b', fontSize: 12, marginTop: 8 },
-  bgText: { color: '#10b981', fontSize: 12, marginTop: 8 },
-  warnText: { color: '#f59e0b', fontSize: 12, marginTop: 8, textDecorationLine: 'underline' },
+  mapPlaceholder: {
+    flex: 1,
+    backgroundColor: '#111827',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapPlaceholderText: { color: '#6b7280', fontSize: 14 },
+  locationBar: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#1f2937',
+  },
+  coordText: { color: '#e5e7eb', fontSize: 12, fontFamily: 'monospace' },
+  queueText: { color: '#f59e0b', fontSize: 11, marginTop: 4 },
+  bgText: { color: '#10b981', fontSize: 11, marginTop: 4 },
+  warnText: { color: '#f59e0b', fontSize: 11, marginTop: 4, textDecorationLine: 'underline' },
   pausedBanner: {
     marginHorizontal: 20,
     marginTop: 16,
@@ -646,21 +675,24 @@ const styles = StyleSheet.create({
   },
   pausedTitle: { color: '#fca5a5', fontSize: 16, fontWeight: '700', marginBottom: 6 },
   pausedText: { color: '#fecaca', fontSize: 13, marginTop: 2 },
-  actions: { paddingHorizontal: 20, gap: 12 },
+  actions: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },
+  actionRow: { flexDirection: 'row', gap: 10 },
   trackBtn: {
-    paddingVertical: 16,
-    borderRadius: 14,
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   trackBtnStart: { backgroundColor: '#16a34a' },
   trackBtnStop: { backgroundColor: '#dc2626' },
-  trackBtnText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
+  trackBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
   photoBtn: {
+    flex: 1,
     backgroundColor: '#1d4ed8',
-    paddingVertical: 16,
-    borderRadius: 14,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
   btnDisabled: { opacity: 0.5 },
-  photoBtnText: { color: '#ffffff', fontSize: 16, fontWeight: '700' },
+  photoBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
 });

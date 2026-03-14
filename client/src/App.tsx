@@ -8,6 +8,7 @@ import { TrackingPage } from './pages/TrackingPage';
 import { JoinPage } from './pages/JoinPage';
 import { LandingPage } from './pages/LandingPage';
 import { AdminPage } from './pages/AdminPage';
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/track/:token" element={<TrackingPage />} />
         <Route path="/join" element={<JoinPage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
         {/* Protected routes (company dashboard) */}
         <Route element={<ProtectedRoute />}>

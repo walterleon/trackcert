@@ -1,13 +1,16 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Linking } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { TrackingScreen } from './src/screens/TrackingScreen';
+import { LocationDisclosureScreen } from './src/screens/LocationDisclosureScreen';
 import { useTrackingStore } from './src/store/useTrackingStore';
 
 const Stack = createStackNavigator();
+const DISCLOSURE_KEY = 'rastreoya-disclosure-accepted';
 
 function parseJoinUrl(url: string): { campaignCode: string; validationCode: string } | null {
   const match = url.match(/[?&]code=([^&]+).*[?&]pin=([^&]+)/);
@@ -20,6 +23,13 @@ function parseJoinUrl(url: string): { campaignCode: string; validationCode: stri
 export default function App() {
   const session = useTrackingStore((s) => s.session);
   const setPendingJoin = useTrackingStore((s) => s.setPendingJoin);
+  const [disclosureAccepted, setDisclosureAccepted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(DISCLOSURE_KEY).then((val) => {
+      setDisclosureAccepted(val === 'true');
+    });
+  }, []);
 
   useEffect(() => {
     const handleUrl = ({ url }: { url: string }) => {
@@ -32,6 +42,31 @@ export default function App() {
     Linking.getInitialURL().then((url) => { if (url) handleUrl({ url }); });
     return () => sub.remove();
   }, []);
+
+  const handleAcceptDisclosure = async () => {
+    await AsyncStorage.setItem(DISCLOSURE_KEY, 'true');
+    setDisclosureAccepted(true);
+  };
+
+  const handleDeclineDisclosure = () => {
+    // If declined, show login anyway but without location tracking
+    setDisclosureAccepted(true);
+  };
+
+  // Loading state
+  if (disclosureAccepted === null) return null;
+
+  // Show disclosure before anything else
+  if (!disclosureAccepted) {
+    return (
+      <SafeAreaProvider>
+        <LocationDisclosureScreen
+          onAccept={handleAcceptDisclosure}
+          onDecline={handleDeclineDisclosure}
+        />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>
