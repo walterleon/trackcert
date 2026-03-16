@@ -80,6 +80,7 @@ const paymentLimiter = rateLimit({
   max: 5,
   keyGenerator: (req) => (req as any).company?.companyId || req.ip || 'unknown',
   message: { error: 'Demasiadas solicitudes. Intentá de nuevo en un minuto.' },
+  validate: { keyGeneratorIpFallback: false },
 });
 
 router.post('/payments/subscribe', authMiddleware as any, paymentLimiter, subscribe as any);

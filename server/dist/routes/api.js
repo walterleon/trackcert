@@ -57,6 +57,7 @@ const paymentLimiter = (0, express_rate_limit_1.default)({
     max: 5,
     keyGenerator: (req) => { var _a; return ((_a = req.company) === null || _a === void 0 ? void 0 : _a.companyId) || req.ip || 'unknown'; },
     message: { error: 'Demasiadas solicitudes. Intentá de nuevo en un minuto.' },
+    validate: { keyGeneratorIpFallback: false },
 });
 router.post('/payments/subscribe', auth_1.authMiddleware, paymentLimiter, paymentController_1.subscribe);
 router.post('/payments/change-plan', auth_1.authMiddleware, paymentLimiter, paymentController_1.changePlan);
