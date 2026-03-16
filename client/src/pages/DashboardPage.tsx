@@ -1,18 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Plus, MapPin, Users, Camera, ChevronRight, Power, AlertCircle, Coins } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, MapPin, Users, Camera, ChevronRight, Power, AlertCircle, Coins, CreditCard, LayoutList, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { apiListCampaigns, apiUpdateCampaign, type Campaign } from '../api/companyApi';
+import { apiListCampaigns, apiUpdateCampaign, apiGetPaymentStatus, type Campaign } from '../api/companyApi';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
+import { BillingSection } from '../components/BillingSection';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+type DashboardTab = 'campaigns' | 'billing';
+
 export function DashboardPage() {
-  const { token, company } = useAuthStore();
+  const { token, company, setAuth } = useAuthStore();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState<DashboardTab>('campaigns');
+  const [paymentAlert, setPaymentAlert] = useState<{ type: 'success' | 'failure' | 'pending'; message: string } | null>(null);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const load = async () => {
     if (!token) return;
@@ -29,6 +35,36 @@ export function DashboardPage() {
   useEffect(() => {
     load();
   }, [token]);
+
+  // Handle payment redirect params
+  useEffect(() => {
+    const payment = searchParams.get('payment');
+    if (payment && token) {
+      const messages: Record<string, { type: 'success' | 'failure' | 'pending'; message: string }> = {
+        success: { type: 'success', message: 'Pago procesado con exito. Tus creditos se actualizaran en breve.' },
+        failure: { type: 'failure', message: 'El pago no pudo completarse. Intenta de nuevo.' },
+        pending: { type: 'pending', message: 'Tu pago esta pendiente de confirmacion. Te notificaremos cuando se acredite.' },
+      };
+      setPaymentAlert(messages[payment] || null);
+      setTab('billing');
+
+      // Refresh payment status to update credits
+      apiGetPaymentStatus(token).then((status) => {
+        if (company) {
+          setAuth(token, {
+            ...company,
+            credits: status.company.credits,
+            bonusCredits: status.company.bonusCredits,
+            planName: status.company.planName,
+          });
+        }
+      }).catch(() => { /* silent */ });
+
+      // Remove query param
+      searchParams.delete('payment');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, token]);
 
   const toggleActive = async (campaign: Campaign) => {
     if (!token) return;
@@ -47,60 +83,127 @@ export function DashboardPage() {
 
   return (
     <DashboardLayout>
+      {/* Payment alert from redirect */}
+      {paymentAlert && (
+        <div
+          className={`flex items-center gap-3 rounded-lg px-4 py-3 mb-4 ${
+            paymentAlert.type === 'success'
+              ? 'bg-emerald-500/10 border border-emerald-500/30'
+              : paymentAlert.type === 'failure'
+              ? 'bg-red-500/10 border border-red-500/30'
+              : 'bg-yellow-500/10 border border-yellow-500/30'
+          }`}
+        >
+          {paymentAlert.type === 'success' && <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />}
+          {paymentAlert.type === 'failure' && <XCircle className="w-5 h-5 text-red-400 flex-shrink-0" />}
+          {paymentAlert.type === 'pending' && <Clock className="w-5 h-5 text-yellow-400 flex-shrink-0" />}
+          <p className={`text-sm ${
+            paymentAlert.type === 'success' ? 'text-emerald-400' : paymentAlert.type === 'failure' ? 'text-red-400' : 'text-yellow-400'
+          }`}>
+            {paymentAlert.message}
+          </p>
+          <button
+            onClick={() => setPaymentAlert(null)}
+            className="ml-auto text-gray-500 hover:text-gray-300"
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {noCredits && (
         <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 mb-4">
           <Coins className="w-5 h-5 text-amber-400 flex-shrink-0" />
-          <div>
-            <p className="text-amber-400 text-sm font-medium">Sin créditos disponibles</p>
-            <p className="text-amber-400/70 text-xs">Tus repartidores siguen enviando datos, pero no podés ver el mapa ni los recorridos hasta recargar créditos.</p>
+          <div className="flex-1">
+            <p className="text-amber-400 text-sm font-medium">Sin creditos disponibles</p>
+            <p className="text-amber-400/70 text-xs">Tus repartidores siguen enviando datos, pero no podes ver el mapa ni los recorridos hasta recargar creditos.</p>
           </div>
+          <button
+            onClick={() => setTab('billing')}
+            className="bg-amber-500 hover:bg-amber-400 text-black px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0"
+          >
+            Ver planes
+          </button>
         </div>
       )}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Mis Campañas</h1>
-          <p className="text-gray-400 text-sm mt-1">
-            {campaigns.length === 0 ? 'No tenés campañas aún' : `${campaigns.length} campaña(s) en total`}
-          </p>
-        </div>
-        <Link
-          to="/campaigns/new"
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+
+      {/* Tabs */}
+      <div className="flex items-center gap-6 border-b border-gray-800 mb-6">
+        <button
+          onClick={() => setTab('campaigns')}
+          className={`flex items-center gap-2 pb-3 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'campaigns'
+              ? 'border-blue-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-300'
+          }`}
         >
-          <Plus className="w-4 h-4" />
-          Nueva campaña
-        </Link>
+          <LayoutList className="w-4 h-4" />
+          Campanas
+        </button>
+        <button
+          onClick={() => setTab('billing')}
+          className={`flex items-center gap-2 pb-3 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'billing'
+              ? 'border-blue-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          Plan y Facturacion
+        </button>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm mb-4">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-5 animate-pulse">
-              <div className="h-4 bg-gray-800 rounded w-3/4 mb-3" />
-              <div className="h-3 bg-gray-800 rounded w-1/2" />
+      {tab === 'campaigns' ? (
+        <>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Mis Campanas</h1>
+              <p className="text-gray-400 text-sm mt-1">
+                {campaigns.length === 0 ? 'No tenes campanas aun' : `${campaigns.length} campana(s) en total`}
+              </p>
             </div>
-          ))}
-        </div>
-      ) : campaigns.length === 0 ? (
-        <EmptyState />
+            <Link
+              to="/campaigns/new"
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Nueva campana
+            </Link>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm mb-4">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-5 animate-pulse">
+                  <div className="h-4 bg-gray-800 rounded w-3/4 mb-3" />
+                  <div className="h-3 bg-gray-800 rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : campaigns.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {campaigns.map((campaign) => (
+                <CampaignCard
+                  key={campaign.id}
+                  campaign={campaign}
+                  onToggle={() => toggleActive(campaign)}
+                  onClick={() => navigate(`/campaigns/${campaign.id}`)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {campaigns.map((campaign) => (
-            <CampaignCard
-              key={campaign.id}
-              campaign={campaign}
-              onToggle={() => toggleActive(campaign)}
-              onClick={() => navigate(`/campaigns/${campaign.id}`)}
-            />
-          ))}
-        </div>
+        token && <BillingSection token={token} />
       )}
     </DashboardLayout>
   );

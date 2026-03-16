@@ -1,4 +1,5 @@
 import { processDailyCredits, initializeRenewalDates } from '../services/creditService';
+import prisma from '../db';
 
 let lastRunDate = '';
 
@@ -30,6 +31,35 @@ export async function startCreditCron(): Promise<void> {
       try {
         const result = await processDailyCredits();
         console.log(`[credit-cron] Daily processing: ${result.processed} companies charged, ${result.renewed} renewals`);
+
+        // Check expired grace periods
+        const expiredGrace = await prisma.subscription.findMany({
+          where: {
+            status: 'grace_period',
+            gracePeriodEnd: { lte: new Date() },
+          },
+        });
+
+        for (const sub of expiredGrace) {
+          await prisma.$transaction([
+            prisma.subscription.update({
+              where: { id: sub.id },
+              data: { status: 'cancelled', endDate: new Date() },
+            }),
+            prisma.company.update({
+              where: { id: sub.companyId },
+              data: { planName: 'gratis', credits: 30 },
+            }),
+            prisma.creditTransaction.create({
+              data: {
+                companyId: sub.companyId,
+                amount: 0,
+                reason: 'Plan cancelado por falta de pago (gracia expirada)',
+              },
+            }),
+          ]);
+          console.log(`[credit-cron] Grace period expired for company ${sub.companyId}, downgraded to gratis`);
+        }
       } catch (err) {
         console.error('[credit-cron] Error in daily processing:', err);
         // Reset so it retries next hour

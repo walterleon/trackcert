@@ -8,9 +8,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startCreditCron = startCreditCron;
 const creditService_1 = require("../services/creditService");
+const db_1 = __importDefault(require("../db"));
 let lastRunDate = '';
 /**
  * Start the credit cron job.
@@ -40,6 +44,33 @@ function startCreditCron() {
                 try {
                     const result = yield (0, creditService_1.processDailyCredits)();
                     console.log(`[credit-cron] Daily processing: ${result.processed} companies charged, ${result.renewed} renewals`);
+                    // Check expired grace periods
+                    const expiredGrace = yield db_1.default.subscription.findMany({
+                        where: {
+                            status: 'grace_period',
+                            gracePeriodEnd: { lte: new Date() },
+                        },
+                    });
+                    for (const sub of expiredGrace) {
+                        yield db_1.default.$transaction([
+                            db_1.default.subscription.update({
+                                where: { id: sub.id },
+                                data: { status: 'cancelled', endDate: new Date() },
+                            }),
+                            db_1.default.company.update({
+                                where: { id: sub.companyId },
+                                data: { planName: 'gratis', credits: 30 },
+                            }),
+                            db_1.default.creditTransaction.create({
+                                data: {
+                                    companyId: sub.companyId,
+                                    amount: 0,
+                                    reason: 'Plan cancelado por falta de pago (gracia expirada)',
+                                },
+                            }),
+                        ]);
+                        console.log(`[credit-cron] Grace period expired for company ${sub.companyId}, downgraded to gratis`);
+                    }
                 }
                 catch (err) {
                     console.error('[credit-cron] Error in daily processing:', err);

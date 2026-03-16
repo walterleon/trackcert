@@ -111,6 +111,32 @@ const CONFIG_DEFINITIONS: Record<string, ConfigDef> = {
     type: 'number', default: '69.99', label: 'Precio mensual USD (Empresas)',
     category: 'plan_empresas', min: 0, max: 10000,
   },
+
+  // ─── Packs de créditos ──────────────────────────────────────────────────────
+  credit_pack_1_size: {
+    type: 'number', default: '100', label: 'Pack 1 - Cantidad de créditos',
+    category: 'pricing', min: 10, max: 10000,
+  },
+  credit_pack_1_price_ars: {
+    type: 'number', default: '15000', label: 'Pack 1 - Precio ARS',
+    category: 'pricing', min: 100, max: 10000000,
+  },
+  credit_pack_2_size: {
+    type: 'number', default: '300', label: 'Pack 2 - Cantidad de créditos',
+    category: 'pricing', min: 10, max: 10000,
+  },
+  credit_pack_2_price_ars: {
+    type: 'number', default: '40000', label: 'Pack 2 - Precio ARS',
+    category: 'pricing', min: 100, max: 10000000,
+  },
+  credit_pack_3_size: {
+    type: 'number', default: '500', label: 'Pack 3 - Cantidad de créditos',
+    category: 'pricing', min: 10, max: 10000,
+  },
+  credit_pack_3_price_ars: {
+    type: 'number', default: '60000', label: 'Pack 3 - Precio ARS',
+    category: 'pricing', min: 100, max: 10000000,
+  },
 };
 
 // ─── In-memory cache ────────────────────────────────────────────────────────

@@ -32,11 +32,118 @@ export interface PlanInfo {
   priceUsd: number;
 }
 
+export interface CreditPack {
+  id: string;
+  size: number;
+  priceArs: number;
+}
+
 export interface PlansResponse {
   plans: PlanInfo[];
   creditPriceArs: number;
   creditPriceUsd: number;
   creditPackSize: number;
+  creditPacks: CreditPack[];
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+export interface SubscriptionInfo {
+  planName: string;
+  status: string;
+  nextRenewalDate: string | null;
+  gracePeriodEnd: string | null;
+}
+
+export interface PaymentStatusResponse {
+  subscription: SubscriptionInfo | null;
+  company: {
+    credits: number;
+    bonusCredits: number;
+    planName: string;
+  };
+}
+
+export interface PaymentInfo {
+  id: string;
+  type: string;
+  amount: number;
+  currency: string;
+  status: string;
+  creditsGranted: number | null;
+  createdAt: string;
+}
+
+export interface PaymentHistoryResponse {
+  payments: PaymentInfo[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function apiSubscribePlan(
+  token: string,
+  planName: string
+): Promise<{ checkoutUrl: string }> {
+  const res = await fetch(`${API_BASE}/payments/subscribe`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ planName }),
+  });
+  return handle<{ checkoutUrl: string }>(res);
+}
+
+export async function apiChangePlan(
+  token: string,
+  planName: string
+): Promise<{ checkoutUrl: string }> {
+  const res = await fetch(`${API_BASE}/payments/change-plan`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ planName }),
+  });
+  return handle<{ checkoutUrl: string }>(res);
+}
+
+export async function apiBuyCredits(
+  token: string,
+  packId: string
+): Promise<{ checkoutUrl: string }> {
+  const res = await fetch(`${API_BASE}/payments/buy-credits`, {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ packId }),
+  });
+  return handle<{ checkoutUrl: string }>(res);
+}
+
+export async function apiCancelSubscription(
+  token: string
+): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/payments/cancel-subscription`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  });
+  return handle<{ success: boolean }>(res);
+}
+
+export async function apiGetPaymentStatus(
+  token: string
+): Promise<PaymentStatusResponse> {
+  const res = await fetch(`${API_BASE}/payments/status`, {
+    headers: authHeaders(token),
+  });
+  return handle<PaymentStatusResponse>(res);
+}
+
+export async function apiGetPaymentHistory(
+  token: string,
+  page: number = 1
+): Promise<PaymentHistoryResponse> {
+  const res = await fetch(`${API_BASE}/payments/history?page=${page}`, {
+    headers: authHeaders(token),
+  });
+  return handle<PaymentHistoryResponse>(res);
 }
 
 export async function apiGetPlans(): Promise<PlansResponse> {

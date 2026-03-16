@@ -22,7 +22,9 @@ const getPlans = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
         // Pro
         proCredits, proCampaigns, proTrail, proPhotos, proPriceArs, proPriceUsd, 
         // Empresas
-        empCredits, empCampaigns, empTrail, empPhotos, empPriceArs, empPriceUsd,] = yield Promise.all([
+        empCredits, empCampaigns, empTrail, empPhotos, empPriceArs, empPriceUsd, 
+        // Credit packs
+        pack1Size, pack1Price, pack2Size, pack2Price, pack3Size, pack3Price,] = yield Promise.all([
             (0, configService_1.getConfigNumber)('credit_price_ars'),
             (0, configService_1.getConfigNumber)('credit_price_usd'),
             (0, configService_1.getConfigNumber)('credit_pack_size'),
@@ -44,6 +46,13 @@ const getPlans = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
             (0, configService_1.getConfigNumber)('plan_empresas_max_photos'),
             (0, configService_1.getConfigNumber)('plan_empresas_price_ars'),
             (0, configService_1.getConfigNumber)('plan_empresas_price_usd'),
+            // Credit packs
+            (0, configService_1.getConfigNumber)('credit_pack_1_size'),
+            (0, configService_1.getConfigNumber)('credit_pack_1_price_ars'),
+            (0, configService_1.getConfigNumber)('credit_pack_2_size'),
+            (0, configService_1.getConfigNumber)('credit_pack_2_price_ars'),
+            (0, configService_1.getConfigNumber)('credit_pack_3_size'),
+            (0, configService_1.getConfigNumber)('credit_pack_3_price_ars'),
         ]);
         res.json({
             plans: [
@@ -78,6 +87,11 @@ const getPlans = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
             creditPriceArs,
             creditPriceUsd,
             creditPackSize,
+            creditPacks: [
+                { id: '1', size: pack1Size, priceArs: pack1Price },
+                { id: '2', size: pack2Size, priceArs: pack2Price },
+                { id: '3', size: pack3Size, priceArs: pack3Price },
+            ],
         });
     }
     catch (_a) {

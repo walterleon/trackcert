@@ -13,8 +13,10 @@ const driverController_1 = require("../controllers/driverController");
 const shareController_1 = require("../controllers/shareController");
 const plansController_1 = require("../controllers/plansController");
 const adminController_1 = require("../controllers/adminController");
+const paymentController_1 = require("../controllers/paymentController");
 const auth_1 = require("../middleware/auth");
 const creditCheck_1 = require("../middleware/creditCheck");
+const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const router = (0, express_1.Router)();
 // Multer: disk storage for photos
 const storage = multer_1.default.diskStorage({
@@ -49,6 +51,24 @@ router.post('/driver/photo', upload.single('photo'), driverController_1.uploadPh
 // ─── Share page (public) ──────────────────────────────────────────────────────
 router.get('/share/:token', shareController_1.getShareData);
 router.get('/share/:token/trails', shareController_1.getShareTrails);
+// ─── Payments (company auth + rate limit) ────────────────────────────────────
+const paymentLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 1000, // 1 minute
+    max: 5,
+    keyGenerator: (req) => { var _a; return ((_a = req.company) === null || _a === void 0 ? void 0 : _a.companyId) || req.ip || 'unknown'; },
+    message: { error: 'Demasiadas solicitudes. Intentá de nuevo en un minuto.' },
+});
+router.post('/payments/subscribe', auth_1.authMiddleware, paymentLimiter, paymentController_1.subscribe);
+router.post('/payments/change-plan', auth_1.authMiddleware, paymentLimiter, paymentController_1.changePlan);
+router.post('/payments/buy-credits', auth_1.authMiddleware, paymentLimiter, paymentController_1.buyCredits);
+router.post('/payments/cancel-subscription', auth_1.authMiddleware, paymentLimiter, paymentController_1.cancelSub);
+router.get('/payments/status', auth_1.authMiddleware, paymentController_1.paymentStatusHandler);
+router.get('/payments/history', auth_1.authMiddleware, paymentController_1.paymentHistoryHandler);
+// Webhook is mounted in index.ts (before express.json)
+// Redirect endpoints (MP back_urls)
+router.get('/payments/success', (0, paymentController_1.paymentRedirect)('success'));
+router.get('/payments/failure', (0, paymentController_1.paymentRedirect)('failure'));
+router.get('/payments/pending', (0, paymentController_1.paymentRedirect)('pending'));
 // ─── Admin (super admin only) ─────────────────────────────────────────────────
 router.get('/admin/stats', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.getStats);
 router.get('/admin/companies', auth_1.authMiddleware, auth_1.superAdminMiddleware, adminController_1.getCompanies);

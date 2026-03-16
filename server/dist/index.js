@@ -11,6 +11,8 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 dotenv_1.default.config();
+const MP_MODE = process.env.MP_MODE || 'sandbox';
+console.log(`[mercadopago] Mode: ${MP_MODE}`);
 // Ensure uploads directory exists
 const uploadsDir = path_1.default.join(process.cwd(), 'uploads');
 if (!fs_1.default.existsSync(uploadsDir)) {
@@ -27,6 +29,9 @@ const io = new socket_io_1.Server(server, {
 // Make io accessible from controllers via req.app.get('io')
 app.set('io', io);
 app.use((0, cors_1.default)({ origin: allowedOrigins }));
+// MercadoPago webhook must receive raw body BEFORE express.json() parses it
+const paymentController_1 = require("./controllers/paymentController");
+app.post('/api/payments/webhook', express_1.default.raw({ type: 'application/json' }), paymentController_1.webhookHandler);
 app.use(express_1.default.json());
 // Serve uploaded photos statically
 app.use('/uploads', express_1.default.static(uploadsDir));

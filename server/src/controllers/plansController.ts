@@ -14,6 +14,8 @@ export const getPlans = async (_req: Request, res: Response): Promise<void> => {
       proCredits, proCampaigns, proTrail, proPhotos, proPriceArs, proPriceUsd,
       // Empresas
       empCredits, empCampaigns, empTrail, empPhotos, empPriceArs, empPriceUsd,
+      // Credit packs
+      pack1Size, pack1Price, pack2Size, pack2Price, pack3Size, pack3Price,
     ] = await Promise.all([
       getConfigNumber('credit_price_ars'),
       getConfigNumber('credit_price_usd'),
@@ -36,6 +38,13 @@ export const getPlans = async (_req: Request, res: Response): Promise<void> => {
       getConfigNumber('plan_empresas_max_photos'),
       getConfigNumber('plan_empresas_price_ars'),
       getConfigNumber('plan_empresas_price_usd'),
+      // Credit packs
+      getConfigNumber('credit_pack_1_size'),
+      getConfigNumber('credit_pack_1_price_ars'),
+      getConfigNumber('credit_pack_2_size'),
+      getConfigNumber('credit_pack_2_price_ars'),
+      getConfigNumber('credit_pack_3_size'),
+      getConfigNumber('credit_pack_3_price_ars'),
     ]);
 
     res.json({
@@ -71,6 +80,11 @@ export const getPlans = async (_req: Request, res: Response): Promise<void> => {
       creditPriceArs,
       creditPriceUsd,
       creditPackSize,
+      creditPacks: [
+        { id: '1', size: pack1Size, priceArs: pack1Price },
+        { id: '2', size: pack2Size, priceArs: pack2Price },
+        { id: '3', size: pack3Size, priceArs: pack3Price },
+      ],
     });
   } catch {
     res.status(500).json({ error: 'Internal server error' });

@@ -20,8 +20,18 @@ import { uploadPhoto, deletePhoto } from '../controllers/driverController';
 import { getShareData, getShareTrails } from '../controllers/shareController';
 import { getPlans } from '../controllers/plansController';
 import { getStats, getCompanies, updateCompany, getAllActiveCampaigns, getSystemConfig, updateSystemConfig } from '../controllers/adminController';
+import {
+  subscribe,
+  changePlan,
+  buyCredits,
+  cancelSub,
+  paymentStatusHandler,
+  paymentHistoryHandler,
+  paymentRedirect,
+} from '../controllers/paymentController';
 import { authMiddleware, superAdminMiddleware } from '../middleware/auth';
 import { creditCheckMiddleware } from '../middleware/creditCheck';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
 
@@ -63,6 +73,26 @@ router.post('/driver/photo', upload.single('photo'), uploadPhoto);
 // ─── Share page (public) ──────────────────────────────────────────────────────
 router.get('/share/:token', getShareData);
 router.get('/share/:token/trails', getShareTrails);
+
+// ─── Payments (company auth + rate limit) ────────────────────────────────────
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5,
+  keyGenerator: (req) => (req as any).company?.companyId || req.ip || 'unknown',
+  message: { error: 'Demasiadas solicitudes. Intentá de nuevo en un minuto.' },
+});
+
+router.post('/payments/subscribe', authMiddleware as any, paymentLimiter, subscribe as any);
+router.post('/payments/change-plan', authMiddleware as any, paymentLimiter, changePlan as any);
+router.post('/payments/buy-credits', authMiddleware as any, paymentLimiter, buyCredits as any);
+router.post('/payments/cancel-subscription', authMiddleware as any, paymentLimiter, cancelSub as any);
+router.get('/payments/status', authMiddleware as any, paymentStatusHandler as any);
+router.get('/payments/history', authMiddleware as any, paymentHistoryHandler as any);
+// Webhook is mounted in index.ts (before express.json)
+// Redirect endpoints (MP back_urls)
+router.get('/payments/success', paymentRedirect('success'));
+router.get('/payments/failure', paymentRedirect('failure'));
+router.get('/payments/pending', paymentRedirect('pending'));
 
 // ─── Admin (super admin only) ─────────────────────────────────────────────────
 router.get('/admin/stats', authMiddleware as any, superAdminMiddleware as any, getStats as any);
