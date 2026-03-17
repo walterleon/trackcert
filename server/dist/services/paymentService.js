@@ -132,9 +132,9 @@ function createCreditPurchase(companyId, packId) {
                 ],
                 external_reference: extRef,
                 back_urls: {
-                    success: `${APP_URL}/api/payments/success`,
-                    failure: `${APP_URL}/api/payments/failure`,
-                    pending: `${APP_URL}/api/payments/pending`,
+                    success: `${APP_URL}/dashboard?payment=success`,
+                    failure: `${APP_URL}/dashboard?payment=failure`,
+                    pending: `${APP_URL}/dashboard?payment=pending`,
                 },
                 auto_return: 'approved',
             },
