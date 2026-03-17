@@ -59,6 +59,14 @@ function createSubscription(companyId, planName) {
         if (existing) {
             throw new Error('Ya tenés una suscripción activa. Cancelala primero o cambiá de plan.');
         }
+        // Get company email (required by MercadoPago PreApproval)
+        const company = yield db_1.default.company.findUnique({
+            where: { id: companyId },
+            select: { email: true },
+        });
+        if (!(company === null || company === void 0 ? void 0 : company.email)) {
+            throw new Error('Tu cuenta no tiene email configurado. Actualizá tu perfil.');
+        }
         // Get price from config
         const priceKey = `plan_${planName}_price_ars`;
         const price = Number(yield (0, configService_1.getConfig)(priceKey));
@@ -68,6 +76,7 @@ function createSubscription(companyId, planName) {
         const extRef = externalRef('sub', companyId);
         const result = yield preApproval.create({
             body: {
+                payer_email: company.email,
                 reason: `RastreoYa - Plan ${planName.charAt(0).toUpperCase() + planName.slice(1)}`,
                 auto_recurring: {
                     frequency: 1,
