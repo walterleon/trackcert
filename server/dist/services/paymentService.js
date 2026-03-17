@@ -85,7 +85,7 @@ function createSubscription(companyId, planName) {
                     currency_id: 'ARS',
                 },
                 external_reference: extRef,
-                back_url: `${APP_URL}/api/payments/success`,
+                back_url: `${APP_URL}/dashboard?payment=success`,
             },
         });
         // Create local subscription record
